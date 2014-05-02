@@ -24,11 +24,10 @@ func computeMd5(key string) string {
 
 var _ = Describe("File cache", func() {
 	var (
-		cache           *cacheddownloader.Cache
+		cache           cacheddownloader.CachedDownloader
 		cachedPath      string
 		uncachedPath    string
 		maxSizeInBytes  int64
-		downloader      cacheddownloader.Downloader
 		downloadContent []byte
 		url             *Url.URL
 		server          *ghttp.Server
@@ -44,8 +43,7 @@ var _ = Describe("File cache", func() {
 
 		maxSizeInBytes = 1024
 
-		downloader = cacheddownloader.NewDownloader(time.Second)
-		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, downloader)
+		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second)
 		server = ghttp.NewServer()
 
 		url, err = Url.Parse(server.URL() + "/my_file")
@@ -65,7 +63,7 @@ var _ = Describe("File cache", func() {
 	Describe("when the cache folder does not exist", func() {
 		It("should create it", func() {
 			os.RemoveAll(cachedPath)
-			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, downloader)
+			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second)
 			_, err := os.Stat(cachedPath)
 			Ω(err).ShouldNot(HaveOccurred())
 		})
@@ -75,7 +73,7 @@ var _ = Describe("File cache", func() {
 		It("should nuke that stuff", func() {
 			filename := filepath.Join(cachedPath, "last_nights_dinner")
 			ioutil.WriteFile(filename, []byte("leftovers"), 0666)
-			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, downloader)
+			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second)
 			_, err := os.Stat(filename)
 			Ω(err).Should(HaveOccurred())
 		})
