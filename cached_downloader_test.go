@@ -356,6 +356,33 @@ var _ = Describe("File cache", func() {
 				Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
 				Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
 			})
+
+			Context("when the file is downloaded the second time", func() {
+				BeforeEach(func() {
+					err = file.Close()
+					Ω(err).ShouldNot(HaveOccurred())
+
+					server.AppendHandlers(ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", "/my_file"),
+						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+							Ω(req.Header.Get("If-None-Match")).Should(BeEmpty())
+						}),
+						ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
+					))
+
+					file, err = cache.Fetch(url, cacheKey)
+				})
+
+				It("should not error", func() {
+					Ω(err).ShouldNot(HaveOccurred())
+				})
+
+				It("should return a readCloser that streams the file", func() {
+					Ω(file).ShouldNot(BeNil())
+					Ω(ioutil.ReadAll(file)).Should(Equal(downloadContent))
+				})
+			})
+
 		})
 
 		Context("when the cache is full", func() {

@@ -109,10 +109,13 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.Re
 		return tempFile, nil
 	}
 
-	c.setCachingInfoForCacheKey(cacheKey, cachingInfo)
-
 	//make room for the file and move it in (if possible)
-	c.moveFileIntoCache(cacheKey, tempFile.Name(), size)
+	moved := c.moveFileIntoCache(cacheKey, tempFile.Name(), size)
+	if moved {
+		c.setCachingInfoForCacheKey(cacheKey, cachingInfo)
+	} else {
+		c.removeCacheEntryFor(cacheKey)
+	}
 
 	_, err = tempFile.Seek(0, 0)
 	if err != nil {
@@ -126,13 +129,13 @@ func (c *cachedDownloader) pathForCacheKey(cacheKey string) string {
 	return filepath.Join(c.cachedPath, cacheKey)
 }
 
-func (c *cachedDownloader) moveFileIntoCache(cacheKey string, sourcePath string, size int64) {
+func (c *cachedDownloader) moveFileIntoCache(cacheKey string, sourcePath string, size int64) bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	if size > c.maxSizeInBytes {
 		//file does not fit in cache...
-		return
+		return false
 	}
 
 	usedSpace := int64(0)
@@ -161,6 +164,8 @@ func (c *cachedDownloader) moveFileIntoCache(cacheKey string, sourcePath string,
 	f.size = size
 	c.cachedFiles[cacheKey] = f
 	os.Rename(sourcePath, c.pathForCacheKey(cacheKey))
+
+	return true
 }
 
 func (c *cachedDownloader) removeCacheEntryFor(cacheKey string) {
