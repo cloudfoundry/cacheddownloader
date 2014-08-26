@@ -45,78 +45,92 @@ func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string) (io.ReadCloser, 
 }
 
 func (c *cachedDownloader) fetchUncachedFile(url *url.URL) (io.ReadCloser, error) {
-	destinationFile, err := ioutil.TempFile(c.uncachedPath, "uncached")
+	download, err := c.downloadFile(url, "uncached", CachingInfoType{})
+
+	// Use os.RemoveAll because on windows, os.Remove will remove
+	// the dir of the file if the file doesn't exist and the dir of the file is
+	// empty.
+	defer os.RemoveAll(download.path)
 	if err != nil {
 		return nil, err
 	}
-	destinationFileName := destinationFile.Name()
 
-	_, _, _, err = c.downloader.Download(url, destinationFile, CachingInfoType{})
-	if err != nil {
-		destinationFile.Close()
-		os.RemoveAll(destinationFileName)
-		return nil, err
-	}
-
-	destinationFile.Seek(0, 0)
-
-	res := NewFileCloser(destinationFile, func(filePath string) {
-		os.RemoveAll(filePath)
-	})
-
-	return res, nil
+	return tempFileCloser(download.path)
 }
 
 func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.ReadCloser, error) {
 	c.cache.RecordAccess(cacheKey)
 
-	downloadedFile, err := ioutil.TempFile(c.uncachedPath, cacheKey+"-")
+	download, err := c.downloadFile(url, cacheKey, c.cache.Info(cacheKey))
+
+	// Use os.RemoveAll because on windows, os.Remove will remove
+	// the dir of the file if the file doesn't exist and the dir of the file is
+	// empty.
+	defer os.RemoveAll(download.path)
 	if err != nil {
 		return nil, err
 	}
 
-	downloadedFileName := downloadedFile.Name()
-	// use RemoveAll. It has a better behavior on Windows. OS.Remove will remove the dir of the file, if the file dosn't exist and the dir of the file is empty.
-	defer os.RemoveAll(downloadedFileName) //OK, even if we return downloadedFile 'cause that's how UNIX works.
-
-	didDownload, size, cachingInfo, err := c.downloader.Download(url, downloadedFile, c.cache.Info(cacheKey))
-	if err != nil {
-		downloadedFile.Close()
-		return nil, err
-	}
-
-	downloadedFile.Close()
-
-	var filePathToRead string
-
-	if didDownload {
-		if cachingInfo.ETag == "" && cachingInfo.LastModified == "" {
-			c.cache.RemoveEntry(cacheKey)
-			filePathToRead = downloadedFileName
-		} else {
-			movedToCache, err := c.cache.Add(cacheKey, downloadedFileName, size, cachingInfo)
+	if download.matchesCache {
+		return c.cache.Get(cacheKey)
+	} else {
+		if download.isCachable() {
+			movedToCache, err := c.cache.Add(cacheKey, download.path, download.size, download.cachingInfo)
 			if err != nil {
 				return nil, err
 			}
 
 			if movedToCache {
-				filePathToRead = c.cache.PathForKey(cacheKey)
+				return c.cache.Get(cacheKey)
 			} else {
-				filePathToRead = downloadedFileName
+				return tempFileCloser(download.path)
 			}
+		} else {
+			c.cache.RemoveEntry(cacheKey)
+			return tempFileCloser(download.path)
 		}
-	} else {
-		filePathToRead = c.cache.PathForKey(cacheKey)
 	}
+}
 
-	f, err := os.Open(filePathToRead)
+func tempFileCloser(path string) (io.ReadCloser, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
-	res := NewFileCloser(f, func(filePath string) {
-		c.cache.RemoveFileIfUntracked(filePath)
-	})
+	return NewFileCloser(f, func(path string) {
+		os.RemoveAll(path)
+	}), nil
+}
 
-	return res, nil
+type download struct {
+	matchesCache bool
+	path         string
+	size         int64
+	cachingInfo  CachingInfoType
+}
+
+func (d download) isCachable() bool {
+	return d.cachingInfo.ETag != "" || d.cachingInfo.LastModified != ""
+}
+
+func (c *cachedDownloader) downloadFile(url *url.URL, name string, cachingInfo CachingInfoType) (download, error) {
+	downloadedFile, err := ioutil.TempFile(c.uncachedPath, name+"-")
+	if err != nil {
+		return download{}, err
+	}
+
+	didDownload, size, cachingInfo, err := c.downloader.Download(url, downloadedFile, cachingInfo)
+	downloadedFile.Close()
+	if err != nil {
+		os.RemoveAll(downloadedFile.Name())
+		return download{}, err
+	}
+
+	return download{
+		matchesCache: !didDownload,
+		path:         downloadedFile.Name(),
+		size:         size,
+		cachingInfo:  cachingInfo,
+	}, nil
 }

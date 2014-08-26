@@ -1,6 +1,7 @@
 package cacheddownloader
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -63,10 +64,21 @@ func (c *fileCache) Add(cacheKey string, sourcePath string, size int64, cachingI
 	return true, nil
 }
 
-func (c *fileCache) PathForKey(cacheKey string) string {
+func (c *fileCache) Get(cacheKey string) (io.ReadCloser, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.entries[cacheKey].filePath
+
+	path := c.entries[cacheKey].filePath
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	readCloser := NewFileCloser(f, func(filePath string) {
+		c.removeFileIfUntracked(filePath)
+	})
+
+	return readCloser, nil
 }
 
 func (c *fileCache) RemoveEntry(cacheKey string) {
@@ -83,7 +95,7 @@ func (c *fileCache) RecordAccess(cacheKey string) {
 	c.entries[cacheKey] = f
 }
 
-func (c *fileCache) RemoveFileIfUntracked(cacheFilePath string) {
+func (c *fileCache) removeFileIfUntracked(cacheFilePath string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
