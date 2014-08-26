@@ -7,9 +7,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
-	"path/filepath"
 	"runtime"
-	"sync"
 	"time"
 )
 
@@ -25,10 +23,10 @@ type CachingInfoType struct {
 type cacheFileWrapper struct {
 	file         *os.File
 	filePath     string
-	cacheManager *cachedDownloader
+	cacheManager *fileCache
 }
 
-func newCacheFileWrapper(fine *os.File, filePath string, cacheManager *cachedDownloader) *cacheFileWrapper {
+func newCacheFileWrapper(fine *os.File, filePath string, cacheManager *fileCache) *cacheFileWrapper {
 	res := &cacheFileWrapper{
 		file:         fine,
 		filePath:     filePath,
@@ -47,7 +45,7 @@ func (fw *cacheFileWrapper) Close() error {
 	if err != nil {
 		return err
 	}
-	fw.cacheManager.tryRemoveUntrackedCacheFile(fw.filePath)
+	fw.cacheManager.RemoveFileIfUntracked(fw.filePath)
 	runtime.SetFinalizer(fw, nil)
 	return nil
 }
@@ -56,35 +54,19 @@ func finalizeCacheFileWrapper(f *cacheFileWrapper) {
 	f.Close()
 }
 
-type CachedFile struct {
-	size        int64
-	access      time.Time
-	cachingInfo CachingInfoType
-	filePath    string
-}
-
 type cachedDownloader struct {
-	cachedPath     string
-	uncachedPath   string
-	maxSizeInBytes int64
-	downloader     *Downloader
-	lock           *sync.Mutex
-
-	cachedFiles    map[string]CachedFile
-	cacheFilePaths map[string]string
+	downloader   *Downloader
+	uncachedPath string
+	cache        *fileCache
 }
 
 func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration) *cachedDownloader {
 	os.RemoveAll(cachedPath)
 	os.MkdirAll(cachedPath, 0770)
 	return &cachedDownloader{
-		cachedPath:     cachedPath,
-		uncachedPath:   uncachedPath,
-		maxSizeInBytes: maxSizeInBytes,
-		downloader:     NewDownloader(downloadTimeout),
-		lock:           &sync.Mutex{},
-		cachedFiles:    map[string]CachedFile{},
-		cacheFilePaths: map[string]string{},
+		downloader:   NewDownloader(downloadTimeout),
+		uncachedPath: uncachedPath,
+		cache:        NewCache(cachedPath, maxSizeInBytes),
 	}
 }
 
@@ -113,56 +95,54 @@ func (c *cachedDownloader) fetchUncachedFile(url *url.URL) (io.ReadCloser, error
 
 	destinationFile.Seek(0, 0)
 
-	res := newCacheFileWrapper(destinationFile, destinationFileName, c)
+	res := newCacheFileWrapper(destinationFile, destinationFileName, c.cache)
 
 	return res, nil
 }
 
 func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.ReadCloser, error) {
-	c.recordAccessForCacheKey(cacheKey)
+	c.cache.RecordAccess(cacheKey)
 
-	//download the file to a temporary location
-	tempFile, err := ioutil.TempFile(c.uncachedPath, cacheKey+"-")
+	downloadedFile, err := ioutil.TempFile(c.uncachedPath, cacheKey+"-")
 	if err != nil {
 		return nil, err
 	}
 
-	tempFileName := tempFile.Name()
+	downloadedFileName := downloadedFile.Name()
 	// use RemoveAll. It has a better behavior on Windows. OS.Remove will remove the dir of the file, if the file dosn't exist and the dir of the file is empty.
-	defer os.RemoveAll(tempFileName) //OK, even if we return tempFile 'cause that's how UNIX works.
+	defer os.RemoveAll(downloadedFileName) //OK, even if we return downloadedFile 'cause that's how UNIX works.
 
-	didDownload, size, cachingInfo, err := c.downloader.Download(url, tempFile, c.cachingInfoForCacheKey(cacheKey))
+	didDownload, size, cachingInfo, err := c.downloader.Download(url, downloadedFile, c.cache.Info(cacheKey))
 	if err != nil {
-		tempFile.Close()
+		downloadedFile.Close()
 		return nil, err
 	}
 
-	tempFile.Close()
+	downloadedFile.Close()
 
-	resFilePath := tempFileName
+	var filePathToRead string
 
 	if didDownload {
 		if cachingInfo.ETag == "" && cachingInfo.LastModified == "" {
-			c.removeCacheEntryFor(cacheKey)
+			c.cache.RemoveEntry(cacheKey)
+			filePathToRead = downloadedFileName
 		} else {
-			c.removeCacheEntryFor(cacheKey)
-
-			//make room for the file and move it in (if possible)
-			movedToCache, err := c.moveFileIntoCache(cacheKey, tempFileName, size)
+			movedToCache, err := c.cache.Add(cacheKey, downloadedFileName, size, cachingInfo)
 			if err != nil {
 				return nil, err
 			}
 
 			if movedToCache {
-				c.setCachingInfoForCacheKey(cacheKey, cachingInfo)
-				resFilePath = c.pathForCacheKeyWithLock(cacheKey)
+				filePathToRead = c.cache.PathForKey(cacheKey)
+			} else {
+				filePathToRead = downloadedFileName
 			}
 		}
 	} else {
-		resFilePath = c.pathForCacheKeyWithLock(cacheKey)
+		filePathToRead = c.cache.PathForKey(cacheKey)
 	}
 
-	f, err := os.Open(resFilePath)
+	f, err := os.Open(filePathToRead)
 	if err != nil {
 		return nil, err
 	}
@@ -172,116 +152,7 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.Re
 		return nil, err
 	}
 
-	res := newCacheFileWrapper(f, resFilePath, c)
+	res := newCacheFileWrapper(f, filePathToRead, c.cache)
 
 	return res, nil
-}
-
-func (c *cachedDownloader) moveFileIntoCache(cacheKey string, sourcePath string, size int64) (bool, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	if size > c.maxSizeInBytes {
-		//file does not fit in cache...
-		return false, nil
-	}
-
-	usedSpace := int64(0)
-	for ck, f := range c.cachedFiles {
-		if ck != cacheKey {
-			usedSpace += f.size
-		}
-	}
-
-	for c.maxSizeInBytes < usedSpace+size {
-		oldestAccessTime, oldestCacheKey := time.Now(), ""
-		for ck, f := range c.cachedFiles {
-			if ck != cacheKey {
-				if f.access.Before(oldestAccessTime) {
-					oldestCacheKey = ck
-					oldestAccessTime = f.access
-				}
-			}
-		}
-
-		usedSpace -= c.cachedFiles[oldestCacheKey].size
-		c.unsafelyRemoveCacheEntryFor(oldestCacheKey)
-	}
-
-	cachePath := filepath.Join(c.cachedPath, filepath.Base(sourcePath))
-
-	err := os.Rename(sourcePath, cachePath)
-	if err != nil {
-		return false, err
-	}
-
-	f := c.cachedFiles[cacheKey]
-	f.size = size
-	f.filePath = cachePath
-	f.access = time.Now()
-	c.cachedFiles[cacheKey] = f
-
-	c.cacheFilePaths[cachePath] = cacheKey
-
-	return true, nil
-}
-
-func (c *cachedDownloader) pathForCacheKey(cacheKey string) string {
-	f := c.cachedFiles[cacheKey]
-	return f.filePath
-}
-
-func (c *cachedDownloader) pathForCacheKeyWithLock(cacheKey string) string {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	return c.pathForCacheKey(cacheKey)
-}
-
-func (c *cachedDownloader) removeCacheEntryFor(cacheKey string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	c.unsafelyRemoveCacheEntryFor(cacheKey)
-}
-
-func (c *cachedDownloader) unsafelyRemoveCacheEntryFor(cacheKey string) {
-	fp := c.pathForCacheKey(cacheKey)
-
-	if fp != "" {
-		delete(c.cacheFilePaths, fp)
-		os.RemoveAll(fp)
-	}
-	delete(c.cachedFiles, cacheKey)
-}
-
-func (c *cachedDownloader) recordAccessForCacheKey(cacheKey string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	f := c.cachedFiles[cacheKey]
-	f.access = time.Now()
-	c.cachedFiles[cacheKey] = f
-}
-
-func (c *cachedDownloader) cachingInfoForCacheKey(cacheKey string) CachingInfoType {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	return c.cachedFiles[cacheKey].cachingInfo
-}
-
-func (c *cachedDownloader) setCachingInfoForCacheKey(cacheKey string, cachingInfo CachingInfoType) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	f := c.cachedFiles[cacheKey]
-	f.cachingInfo = cachingInfo
-	c.cachedFiles[cacheKey] = f
-}
-
-func (c *cachedDownloader) tryRemoveUntrackedCacheFile(cacheFilePath string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	_, isTracked := c.cacheFilePaths[cacheFilePath]
-	if !isTracked {
-		os.RemoveAll(cacheFilePath)
-	}
 }
