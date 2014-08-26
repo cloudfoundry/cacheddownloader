@@ -145,7 +145,7 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.Re
 		if cachingInfo.ETag == "" && cachingInfo.LastModified == "" {
 			c.removeCacheEntryFor(cacheKey)
 		} else {
-			c.removeCacheFileFor(cacheKey)
+			c.removeCacheEntryFor(cacheKey)
 
 			//make room for the file and move it in (if possible)
 			movedToCache, err := c.moveFileIntoCache(cacheKey, tempFileName, size)
@@ -205,14 +205,7 @@ func (c *cachedDownloader) moveFileIntoCache(cacheKey string, sourcePath string,
 		}
 
 		usedSpace -= c.cachedFiles[oldestCacheKey].size
-
-		fp := c.pathForCacheKey(oldestCacheKey)
-
-		if fp != "" {
-			delete(c.cacheFilePaths, fp)
-			os.RemoveAll(fp)
-		}
-		delete(c.cachedFiles, oldestCacheKey)
+		c.unsafelyRemoveCacheEntryFor(oldestCacheKey)
 	}
 
 	cachePath := filepath.Join(c.cachedPath, filepath.Base(sourcePath))
@@ -225,6 +218,7 @@ func (c *cachedDownloader) moveFileIntoCache(cacheKey string, sourcePath string,
 	f := c.cachedFiles[cacheKey]
 	f.size = size
 	f.filePath = cachePath
+	f.access = time.Now()
 	c.cachedFiles[cacheKey] = f
 
 	c.cacheFilePaths[cachePath] = cacheKey
@@ -247,6 +241,10 @@ func (c *cachedDownloader) removeCacheEntryFor(cacheKey string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	c.unsafelyRemoveCacheEntryFor(cacheKey)
+}
+
+func (c *cachedDownloader) unsafelyRemoveCacheEntryFor(cacheKey string) {
 	fp := c.pathForCacheKey(cacheKey)
 
 	if fp != "" {
@@ -254,22 +252,6 @@ func (c *cachedDownloader) removeCacheEntryFor(cacheKey string) {
 		os.RemoveAll(fp)
 	}
 	delete(c.cachedFiles, cacheKey)
-}
-
-func (c *cachedDownloader) removeCacheFileFor(cacheKey string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	fp := c.pathForCacheKey(cacheKey)
-
-	if fp != "" {
-		delete(c.cacheFilePaths, fp)
-		os.RemoveAll(fp)
-	}
-
-	cf := c.cachedFiles[cacheKey]
-	cf.filePath = ""
-	c.cachedFiles[cacheKey] = cf
 }
 
 func (c *cachedDownloader) recordAccessForCacheKey(cacheKey string) {
