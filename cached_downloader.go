@@ -22,7 +22,7 @@ type CachingInfoType struct {
 type cachedDownloader struct {
 	downloader   *Downloader
 	uncachedPath string
-	cache        *fileCache
+	cache        *FileCache
 }
 
 func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration) *cachedDownloader {

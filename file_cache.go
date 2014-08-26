@@ -1,6 +1,7 @@
 package cacheddownloader
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -8,12 +9,13 @@ import (
 	"time"
 )
 
-type fileCache struct {
+type FileCache struct {
 	cachedPath     string
 	maxSizeInBytes int64
 	lock           *sync.Mutex
 	entries        map[string]fileCacheEntry
 	cacheFilePaths map[string]string
+	seq            uint64
 }
 
 type fileCacheEntry struct {
@@ -23,17 +25,18 @@ type fileCacheEntry struct {
 	filePath    string
 }
 
-func NewCache(dir string, maxSizeInBytes int64) *fileCache {
-	return &fileCache{
+func NewCache(dir string, maxSizeInBytes int64) *FileCache {
+	return &FileCache{
 		cachedPath:     dir,
 		maxSizeInBytes: maxSizeInBytes,
 		lock:           &sync.Mutex{},
 		entries:        map[string]fileCacheEntry{},
 		cacheFilePaths: map[string]string{},
+		seq:            0,
 	}
 }
 
-func (c *fileCache) Add(cacheKey string, sourcePath string, size int64, cachingInfo CachingInfoType) (bool, error) {
+func (c *FileCache) Add(cacheKey string, sourcePath string, size int64, cachingInfo CachingInfoType) (bool, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -46,7 +49,9 @@ func (c *fileCache) Add(cacheKey string, sourcePath string, size int64, cachingI
 
 	c.makeRoom(size)
 
-	cachePath := filepath.Join(c.cachedPath, filepath.Base(sourcePath))
+	c.seq++
+	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.seq)
+	cachePath := filepath.Join(c.cachedPath, uniqueName)
 
 	err := os.Rename(sourcePath, cachePath)
 	if err != nil {
@@ -64,7 +69,7 @@ func (c *fileCache) Add(cacheKey string, sourcePath string, size int64, cachingI
 	return true, nil
 }
 
-func (c *fileCache) Get(cacheKey string) (io.ReadCloser, error) {
+func (c *FileCache) Get(cacheKey string) (io.ReadCloser, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -81,13 +86,13 @@ func (c *fileCache) Get(cacheKey string) (io.ReadCloser, error) {
 	return readCloser, nil
 }
 
-func (c *fileCache) RemoveEntry(cacheKey string) {
+func (c *FileCache) RemoveEntry(cacheKey string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.unsafelyRemoveCacheEntryFor(cacheKey)
 }
 
-func (c *fileCache) RecordAccess(cacheKey string) {
+func (c *FileCache) RecordAccess(cacheKey string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	f := c.entries[cacheKey]
@@ -95,7 +100,7 @@ func (c *fileCache) RecordAccess(cacheKey string) {
 	c.entries[cacheKey] = f
 }
 
-func (c *fileCache) removeFileIfUntracked(cacheFilePath string) {
+func (c *FileCache) removeFileIfUntracked(cacheFilePath string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -105,13 +110,13 @@ func (c *fileCache) removeFileIfUntracked(cacheFilePath string) {
 	}
 }
 
-func (c *fileCache) Info(cacheKey string) CachingInfoType {
+func (c *FileCache) Info(cacheKey string) CachingInfoType {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return c.entries[cacheKey].cachingInfo
 }
 
-func (c *fileCache) makeRoom(size int64) {
+func (c *FileCache) makeRoom(size int64) {
 	usedSpace := c.usedSpace()
 	for c.maxSizeInBytes < usedSpace+size {
 		oldestAccessTime, oldestCacheKey := time.Now(), ""
@@ -127,7 +132,7 @@ func (c *fileCache) makeRoom(size int64) {
 	}
 }
 
-func (c *fileCache) unsafelyRemoveCacheEntryFor(cacheKey string) {
+func (c *FileCache) unsafelyRemoveCacheEntryFor(cacheKey string) {
 	fp := c.entries[cacheKey].filePath
 
 	if fp != "" {
@@ -137,7 +142,7 @@ func (c *fileCache) unsafelyRemoveCacheEntryFor(cacheKey string) {
 	delete(c.entries, cacheKey)
 }
 
-func (c *fileCache) usedSpace() int64 {
+func (c *FileCache) usedSpace() int64 {
 	space := int64(0)
 	for _, f := range c.entries {
 		space += f.size
