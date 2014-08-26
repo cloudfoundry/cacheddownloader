@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
-	"runtime"
 	"time"
 )
 
@@ -18,40 +17,6 @@ type CachedDownloader interface {
 type CachingInfoType struct {
 	ETag         string
 	LastModified string
-}
-
-type cacheFileWrapper struct {
-	file         *os.File
-	filePath     string
-	cacheManager *fileCache
-}
-
-func newCacheFileWrapper(fine *os.File, filePath string, cacheManager *fileCache) *cacheFileWrapper {
-	res := &cacheFileWrapper{
-		file:         fine,
-		filePath:     filePath,
-		cacheManager: cacheManager,
-	}
-	runtime.SetFinalizer(res, finalizeCacheFileWrapper)
-	return res
-}
-
-func (fw *cacheFileWrapper) Read(p []byte) (int, error) {
-	return fw.file.Read(p)
-}
-
-func (fw *cacheFileWrapper) Close() error {
-	err := fw.file.Close()
-	if err != nil {
-		return err
-	}
-	fw.cacheManager.RemoveFileIfUntracked(fw.filePath)
-	runtime.SetFinalizer(fw, nil)
-	return nil
-}
-
-func finalizeCacheFileWrapper(f *cacheFileWrapper) {
-	f.Close()
 }
 
 type cachedDownloader struct {
@@ -95,7 +60,9 @@ func (c *cachedDownloader) fetchUncachedFile(url *url.URL) (io.ReadCloser, error
 
 	destinationFile.Seek(0, 0)
 
-	res := newCacheFileWrapper(destinationFile, destinationFileName, c.cache)
+	res := NewFileCloser(destinationFile, func(filePath string) {
+		os.RemoveAll(filePath)
+	})
 
 	return res, nil
 }
@@ -152,7 +119,9 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.Re
 		return nil, err
 	}
 
-	res := newCacheFileWrapper(f, filePathToRead, c.cache)
+	res := NewFileCloser(f, func(filePath string) {
+		c.cache.RemoveFileIfUntracked(filePath)
+	})
 
 	return res, nil
 }
