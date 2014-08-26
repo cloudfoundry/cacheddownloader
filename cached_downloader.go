@@ -114,11 +114,6 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.Re
 		return nil, err
 	}
 
-	_, err = f.Seek(0, 0)
-	if err != nil {
-		return nil, err
-	}
-
 	res := NewFileCloser(f, func(filePath string) {
 		c.cache.RemoveFileIfUntracked(filePath)
 	})
