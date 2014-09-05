@@ -386,7 +386,6 @@ var _ = Describe("File cache", func() {
 		})
 
 		Context("when the cache is full", func() {
-
 			fetchFileOfSize := func(name string, size int) {
 				downloadContent = []byte(strings.Repeat("7", size))
 				url, _ = Url.Parse(server.URL() + "/" + name)
@@ -401,32 +400,46 @@ var _ = Describe("File cache", func() {
 				cachedFile.Close()
 			}
 
-			It("deletes the oldest cached files until there is space", func() {
-				//read them one at a time
-				fetchFileOfSize("C", int(maxSizeInBytes/4))
+			BeforeEach(func() {
 				fetchFileOfSize("A", int(maxSizeInBytes/4))
 				fetchFileOfSize("B", int(maxSizeInBytes/4))
-
-				//read C again
 				fetchFileOfSize("C", int(maxSizeInBytes/4))
+			})
 
+			It("deletes the oldest cached files until there is space", func() {
 				//try to add a file that has size larger
 				fetchFileOfSize("D", int(maxSizeInBytes/2)+1)
 
-				//make sure we removed the least-recently accessed files
 				Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(2))
 
-				paths, _ := filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))
-				Ω(paths).Should(HaveLen(0))
+				Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).Should(HaveLen(0))
+				Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).Should(HaveLen(0))
+				Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).Should(HaveLen(1))
+				Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).Should(HaveLen(1))
+			})
 
-				paths, _ = filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))
-				Ω(paths).Should(HaveLen(0))
+			Describe("when one of the files has just been read", func() {
+				BeforeEach(func() {
+					server.AppendHandlers(ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", "/A"),
+						ghttp.RespondWith(http.StatusNotModified, "", returnedHeader),
+					))
 
-				paths, _ = filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))
-				Ω(paths).Should(HaveLen(1))
+					url, _ = Url.Parse(server.URL() + "/A")
+					cache.Fetch(url, "A")
+				})
 
-				paths, _ = filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))
-				Ω(paths).Should(HaveLen(1))
+				It("considers that file to be the newest", func() {
+					//try to add a file that has size larger
+					fetchFileOfSize("D", int(maxSizeInBytes/2)+1)
+
+					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(2))
+
+					Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).Should(HaveLen(1))
+					Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).Should(HaveLen(0))
+					Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).Should(HaveLen(0))
+					Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).Should(HaveLen(1))
+				})
 			})
 		})
 	})

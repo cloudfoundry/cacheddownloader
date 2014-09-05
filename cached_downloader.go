@@ -59,8 +59,6 @@ func (c *cachedDownloader) fetchUncachedFile(url *url.URL) (io.ReadCloser, error
 }
 
 func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.ReadCloser, error) {
-	c.cache.RecordAccess(cacheKey)
-
 	download, err := c.downloadFile(url, cacheKey, c.cache.Info(cacheKey))
 
 	// Use os.RemoveAll because on windows, os.Remove will remove

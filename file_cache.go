@@ -73,8 +73,11 @@ func (c *FileCache) Get(cacheKey string) (io.ReadCloser, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	path := c.entries[cacheKey].filePath
-	f, err := os.Open(path)
+	entry := c.entries[cacheKey]
+	entry.access = time.Now()
+	c.entries[cacheKey] = entry
+
+	f, err := os.Open(entry.filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -90,14 +93,6 @@ func (c *FileCache) RemoveEntry(cacheKey string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.unsafelyRemoveCacheEntryFor(cacheKey)
-}
-
-func (c *FileCache) RecordAccess(cacheKey string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	f := c.entries[cacheKey]
-	f.access = time.Now()
-	c.entries[cacheKey] = f
 }
 
 func (c *FileCache) removeFileIfUntracked(cacheFilePath string) {
