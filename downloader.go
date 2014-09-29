@@ -32,34 +32,28 @@ func NewDownloader(timeout time.Duration) *Downloader {
 	}
 }
 
-func (downloader *Downloader) Download(url *url.URL, destinationFile *os.File, cachingInfoIn CachingInfoType) (didDownload bool, length int64, cachingInfoOut CachingInfoType, err error) {
+func (downloader *Downloader) Download(url *url.URL, createDestination func() (*os.File, error), cachingInfoIn CachingInfoType) (path string, length int64, cachingInfoOut CachingInfoType, err error) {
 	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
-		didDownload, length, cachingInfoOut, err = downloader.fetchToFile(url, destinationFile, cachingInfoIn)
+		path, length, cachingInfoOut, err = downloader.fetchToFile(url, createDestination, cachingInfoIn)
 		if err == nil {
 			break
 		}
+
 	}
 
 	if err != nil {
-		return false, 0, CachingInfoType{}, err
+		return "", 0, CachingInfoType{}, err
 	}
 	return
 }
 
-func (downloader *Downloader) fetchToFile(url *url.URL, destinationFile *os.File, cachingInfoIn CachingInfoType) (bool, int64, CachingInfoType, error) {
-	_, err := destinationFile.Seek(0, 0)
-	if err != nil {
-		return false, 0, CachingInfoType{}, err
-	}
+func (downloader *Downloader) fetchToFile(url *url.URL, createDestination func() (*os.File, error), cachingInfoIn CachingInfoType) (string, int64, CachingInfoType, error) {
+	var req *http.Request
+	var err error
 
-	err = destinationFile.Truncate(0)
+	req, err = http.NewRequest("GET", url.String(), nil)
 	if err != nil {
-		return false, 0, CachingInfoType{}, err
-	}
-
-	req, err := http.NewRequest("GET", url.String(), nil)
-	if err != nil {
-		return false, 0, CachingInfoType{}, err
+		return "", 0, CachingInfoType{}, err
 	}
 
 	if cachingInfoIn.ETag != "" {
@@ -69,26 +63,51 @@ func (downloader *Downloader) fetchToFile(url *url.URL, destinationFile *os.File
 		req.Header.Add("If-Modified-Since", cachingInfoIn.LastModified)
 	}
 
-	resp, err := downloader.client.Do(req)
+	var resp *http.Response
+	resp, err = downloader.client.Do(req)
 	if err != nil {
-		return false, 0, CachingInfoType{}, err
+		return "", 0, CachingInfoType{}, err
 	}
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		return false, 0, CachingInfoType{}, fmt.Errorf("Download failed: Status code %d", resp.StatusCode)
+	if resp.StatusCode == http.StatusNotModified {
+		return "", 0, CachingInfoType{}, nil
 	}
 
-	if resp.StatusCode == http.StatusNotModified {
-		return false, 0, CachingInfoType{}, nil
+	if resp.StatusCode != http.StatusOK {
+		return "", 0, CachingInfoType{}, fmt.Errorf("Download failed: Status code %d", resp.StatusCode)
+	}
+
+	var destinationFile *os.File
+	destinationFile, err = createDestination()
+	if err != nil {
+		return "", 0, CachingInfoType{}, err
+	}
+
+	defer func() {
+		destinationFile.Close()
+		if err != nil {
+			os.Remove(destinationFile.Name())
+		}
+	}()
+
+	_, err = destinationFile.Seek(0, 0)
+	if err != nil {
+		return "", 0, CachingInfoType{}, err
+	}
+
+	err = destinationFile.Truncate(0)
+	if err != nil {
+		return "", 0, CachingInfoType{}, err
 	}
 
 	hash := md5.New()
 
-	count, err := io.Copy(io.MultiWriter(destinationFile, hash), resp.Body)
+	var count int64
+	count, err = io.Copy(io.MultiWriter(destinationFile, hash), resp.Body)
 	if err != nil {
-		return false, 0, CachingInfoType{}, err
+		return "", 0, CachingInfoType{}, err
 	}
 
 	cachingInfoOut := CachingInfoType{
@@ -99,10 +118,11 @@ func (downloader *Downloader) fetchToFile(url *url.URL, destinationFile *os.File
 	etagChecksum, ok := convertETagToChecksum(cachingInfoOut.ETag)
 
 	if ok && !bytes.Equal(etagChecksum, hash.Sum(nil)) {
-		return false, 0, CachingInfoType{}, fmt.Errorf("Download failed: Checksum mismatch")
+		err = fmt.Errorf("Download failed: Checksum mismatch")
+		return "", 0, CachingInfoType{}, err
 	}
 
-	return true, count, cachingInfoOut, nil
+	return destinationFile.Name(), count, cachingInfoOut, nil
 }
 
 // convertETagToChecksum returns true if ETag is a valid MD5 hash, so a checksum action was intended.

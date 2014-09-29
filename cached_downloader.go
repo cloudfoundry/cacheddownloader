@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,17 @@ type cachedDownloader struct {
 	downloader   *Downloader
 	uncachedPath string
 	cache        *FileCache
+
+	lock       *sync.Mutex
+	inProgress map[string]chan interface{}
+}
+
+func (c CachingInfoType) isCacheable() bool {
+	return c.ETag != "" || c.LastModified != ""
+}
+
+func (c CachingInfoType) Equal(other CachingInfoType) bool {
+	return c.ETag == other.ETag && c.LastModified == other.LastModified
 }
 
 func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration) *cachedDownloader {
@@ -32,65 +44,85 @@ func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadT
 		downloader:   NewDownloader(downloadTimeout),
 		uncachedPath: uncachedPath,
 		cache:        NewCache(cachedPath, maxSizeInBytes),
+		lock:         &sync.Mutex{},
+		inProgress:   map[string]chan interface{}{},
 	}
 }
 
 func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string) (io.ReadCloser, error) {
 	if cacheKey == "" {
 		return c.fetchUncachedFile(url)
-	} else {
-		cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
-		return c.fetchCachedFile(url, cacheKey)
 	}
+
+	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
+	return c.fetchCachedFile(url, cacheKey)
 }
 
 func (c *cachedDownloader) fetchUncachedFile(url *url.URL) (io.ReadCloser, error) {
 	download, err := c.downloadFile(url, "uncached", CachingInfoType{})
-
-	// Use os.RemoveAll because on windows, os.Remove will remove
-	// the dir of the file if the file doesn't exist and the dir of the file is
-	// empty.
-	defer os.RemoveAll(download.path)
 	if err != nil {
 		return nil, err
 	}
 
-	return tempFileCloser(download.path)
+	return tempFileRemoveOnClose(download.path)
 }
 
 func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.ReadCloser, error) {
-	download, err := c.downloadFile(url, cacheKey, c.cache.Info(cacheKey))
+	rateLimiter := c.acquireLimiter(cacheKey)
+	defer c.releaseLimiter(cacheKey, rateLimiter)
 
-	// Use os.RemoveAll because on windows, os.Remove will remove
-	// the dir of the file if the file doesn't exist and the dir of the file is
-	// empty.
-	defer os.RemoveAll(download.path)
+	currentReader, currentCachingInfo, getErr := c.cache.Get(cacheKey)
+
+	download, err := c.downloadFile(url, cacheKey, currentCachingInfo)
 	if err != nil {
 		return nil, err
 	}
 
-	if download.matchesCache {
-		return c.cache.Get(cacheKey)
-	} else {
-		if download.isCachable() {
-			movedToCache, err := c.cache.Add(cacheKey, download.path, download.size, download.cachingInfo)
-			if err != nil {
-				return nil, err
-			}
+	if download.path == "" {
+		return currentReader, getErr
+	}
 
-			if movedToCache {
-				return c.cache.Get(cacheKey)
-			} else {
-				return tempFileCloser(download.path)
-			}
-		} else {
-			c.cache.RemoveEntry(cacheKey)
-			return tempFileCloser(download.path)
+	if currentReader != nil {
+		currentReader.Close()
+	}
+
+	var newReader io.ReadCloser
+	if download.cachingInfo.isCacheable() {
+		newReader, err = c.cache.Add(cacheKey, download.path, download.size, download.cachingInfo)
+		if err == NotEnoughSpace {
+			return tempFileRemoveOnClose(download.path)
 		}
+	} else {
+		c.cache.Remove(cacheKey)
+		newReader, err = tempFileRemoveOnClose(download.path)
+	}
+
+	return newReader, err
+}
+
+func (c *cachedDownloader) acquireLimiter(cacheKey string) chan interface{} {
+	for {
+		c.lock.Lock()
+		rateLimiter := c.inProgress[cacheKey]
+		if rateLimiter == nil {
+			rateLimiter = make(chan interface{})
+			c.inProgress[cacheKey] = rateLimiter
+			c.lock.Unlock()
+			return rateLimiter
+		}
+		c.lock.Unlock()
+		<-rateLimiter
 	}
 }
 
-func tempFileCloser(path string) (io.ReadCloser, error) {
+func (c *cachedDownloader) releaseLimiter(cacheKey string, limiter chan interface{}) {
+	c.lock.Lock()
+	delete(c.inProgress, cacheKey)
+	close(limiter)
+	c.lock.Unlock()
+}
+
+func tempFileRemoveOnClose(path string) (io.ReadCloser, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -102,33 +134,23 @@ func tempFileCloser(path string) (io.ReadCloser, error) {
 }
 
 type download struct {
-	matchesCache bool
-	path         string
-	size         int64
-	cachingInfo  CachingInfoType
-}
-
-func (d download) isCachable() bool {
-	return d.cachingInfo.ETag != "" || d.cachingInfo.LastModified != ""
+	path        string
+	size        int64
+	cachingInfo CachingInfoType
 }
 
 func (c *cachedDownloader) downloadFile(url *url.URL, name string, cachingInfo CachingInfoType) (download, error) {
-	downloadedFile, err := ioutil.TempFile(c.uncachedPath, name+"-")
-	if err != nil {
-		return download{}, err
-	}
+	filename, size, cachingInfo, err := c.downloader.Download(url, func() (*os.File, error) {
+		return ioutil.TempFile(c.uncachedPath, name+"-")
+	}, cachingInfo)
 
-	didDownload, size, cachingInfo, err := c.downloader.Download(url, downloadedFile, cachingInfo)
-	downloadedFile.Close()
 	if err != nil {
-		os.RemoveAll(downloadedFile.Name())
 		return download{}, err
 	}
 
 	return download{
-		matchesCache: !didDownload,
-		path:         downloadedFile.Name(),
-		size:         size,
-		cachingInfo:  cachingInfo,
+		path:        filename,
+		size:        size,
+		cachingInfo: cachingInfo,
 	}, nil
 }

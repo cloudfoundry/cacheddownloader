@@ -46,7 +46,7 @@ var _ = Describe("File cache", func() {
 
 		cacheKey = "the-cache-key"
 
-		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second)
+		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second)
 		server = ghttp.NewServer()
 
 		url, err = Url.Parse(server.URL() + "/my_file")
@@ -218,6 +218,45 @@ var _ = Describe("File cache", func() {
 				It("should clean up after itself", func() {
 					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
 					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
+				})
+			})
+
+			Context("when multiple requests occur", func() {
+				var barrier chan interface{}
+				var results chan bool
+
+				BeforeEach(func() {
+					barrier = make(chan interface{}, 1)
+					results = make(chan bool, 1)
+
+					downloadContent = []byte(strings.Repeat("7", int(maxSizeInBytes/2)))
+					server.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/my_file"),
+							http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+								barrier <- nil
+								defer func() { barrier <- nil }()
+								Consistently(results, .5).ShouldNot(Receive())
+							}),
+							ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
+						),
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/my_file"),
+							http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+								results <- true
+							}),
+							ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
+						),
+					)
+				})
+
+				It("processes one at a time", func() {
+					go func() {
+						cache.Fetch(url, cacheKey)
+					}()
+					<-barrier
+					cache.Fetch(url, cacheKey)
+					<-barrier
 				})
 			})
 		})
