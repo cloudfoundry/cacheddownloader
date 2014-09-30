@@ -88,7 +88,12 @@ func (c *FileCache) Add(cacheKey string, sourcePath string, size int64, cachingI
 	oldEntry := c.entries[cacheKey]
 	if oldEntry != nil {
 		if size == oldEntry.size && cachingInfo.Equal(oldEntry.cachingInfo) {
-			return nil, nil
+			err := os.Remove(sourcePath)
+			if err != nil {
+				return nil, err
+			}
+
+			return oldEntry.readCloser()
 		}
 	}
 
@@ -125,7 +130,11 @@ func (c *FileCache) Get(cacheKey string) (io.ReadCloser, CachingInfoType, error)
 
 	entry.access = time.Now()
 	readCloser, err := entry.readCloser()
-	return readCloser, entry.cachingInfo, err
+	if err != nil {
+		return nil, CachingInfoType{}, err
+	}
+
+	return readCloser, entry.cachingInfo, nil
 }
 
 func (c *FileCache) Remove(cacheKey string) {

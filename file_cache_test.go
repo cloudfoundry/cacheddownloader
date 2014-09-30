@@ -121,9 +121,9 @@ var _ = Describe("FileCache", func() {
 
 			Context("when adding the same cache key with identical info", func() {
 				It("ignores the add", func() {
-					reader, err := cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
+					reader, err := cache.Add(cacheKey, newSourceFile.Name(), fileSize, cacheInfo)
 					Ω(err).ShouldNot(HaveOccurred())
-					Ω(reader).Should(BeNil())
+					Ω(reader).ShouldNot(BeNil())
 				})
 			})
 

@@ -75,6 +75,9 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.Re
 
 	download, err := c.downloadFile(url, cacheKey, currentCachingInfo)
 	if err != nil {
+		if currentReader != nil {
+			currentReader.Close()
+		}
 		return nil, err
 	}
 
