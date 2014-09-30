@@ -36,7 +36,7 @@ var _ = Describe("Downloader", func() {
 
 	BeforeEach(func() {
 		testServer = nil
-		downloader = NewDownloader(100 * time.Millisecond)
+		downloader = NewDownloader(100*time.Millisecond, 10)
 		lock = &sync.Mutex{}
 	})
 
@@ -260,6 +260,74 @@ var _ = Describe("Downloader", func() {
 				Ω(downloadedFile).Should(BeEmpty())
 				Ω(cachingInfo).Should(BeZero())
 			})
+		})
+	})
+
+	Describe("Concurrent downloads", func() {
+		var (
+			server  *ghttp.Server
+			url     *Url.URL
+			barrier chan interface{}
+			results chan bool
+			tempDir string
+		)
+
+		BeforeEach(func() {
+			barrier = make(chan interface{}, 1)
+			results = make(chan bool, 1)
+
+			downloader = NewDownloader(1*time.Second, 1)
+
+			var err error
+			tempDir, err = ioutil.TempDir("", "temp-dl-dir")
+			Ω(err).ShouldNot(HaveOccurred())
+
+			server = ghttp.NewServer()
+			server.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/the-file"),
+					http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+						barrier <- nil
+						Consistently(results, .5).ShouldNot(Receive())
+					}),
+					ghttp.RespondWith(http.StatusOK, "download content", http.Header{}),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/the-file"),
+					http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+						results <- true
+					}),
+					ghttp.RespondWith(http.StatusOK, "download content", http.Header{}),
+				),
+			)
+
+			url, _ = Url.Parse(server.URL() + "/the-file")
+		})
+
+		AfterEach(func() {
+			server.Close()
+			os.RemoveAll(tempDir)
+		})
+
+		downloadTestFile := func() (path string, length int64, cachingInfoOut CachingInfoType, err error) {
+			return downloader.Download(
+				url,
+				func() (*os.File, error) {
+					return ioutil.TempFile(tempDir, "the-file")
+				},
+				CachingInfoType{},
+			)
+		}
+
+		It("only allows n downloads at the same time", func() {
+			go func() {
+				downloadTestFile()
+				barrier <- nil
+			}()
+
+			<-barrier
+			downloadTestFile()
+			<-barrier
 		})
 	})
 

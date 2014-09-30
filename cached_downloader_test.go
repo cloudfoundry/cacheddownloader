@@ -18,6 +18,8 @@ import (
 	"github.com/pivotal-golang/cacheddownloader"
 )
 
+const MAX_CONCURRENT_DOWNLOADS = 10
+
 func computeMd5(key string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(key)))
 }
@@ -46,7 +48,7 @@ var _ = Describe("File cache", func() {
 
 		cacheKey = "the-cache-key"
 
-		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second)
+		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS)
 		server = ghttp.NewServer()
 
 		url, err = Url.Parse(server.URL() + "/my_file")
@@ -66,7 +68,7 @@ var _ = Describe("File cache", func() {
 	Describe("when the cache folder does not exist", func() {
 		It("should create it", func() {
 			os.RemoveAll(cachedPath)
-			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second)
+			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS)
 			_, err := os.Stat(cachedPath)
 			Ω(err).ShouldNot(HaveOccurred())
 		})
@@ -76,7 +78,7 @@ var _ = Describe("File cache", func() {
 		It("should nuke that stuff", func() {
 			filename := filepath.Join(cachedPath, "last_nights_dinner")
 			ioutil.WriteFile(filename, []byte("leftovers"), 0666)
-			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second)
+			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS)
 			_, err := os.Stat(filename)
 			Ω(err).Should(HaveOccurred())
 		})
@@ -235,7 +237,6 @@ var _ = Describe("File cache", func() {
 							ghttp.VerifyRequest("GET", "/my_file"),
 							http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 								barrier <- nil
-								defer func() { barrier <- nil }()
 								Consistently(results, .5).ShouldNot(Receive())
 							}),
 							ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
@@ -253,6 +254,7 @@ var _ = Describe("File cache", func() {
 				It("processes one at a time", func() {
 					go func() {
 						cache.Fetch(url, cacheKey)
+						barrier <- nil
 					}()
 					<-barrier
 					cache.Fetch(url, cacheKey)

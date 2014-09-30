@@ -16,10 +16,11 @@ import (
 const MAX_DOWNLOAD_ATTEMPTS = 3
 
 type Downloader struct {
-	client *http.Client
+	client                    *http.Client
+	concurrentDownloadBarrier chan interface{}
 }
 
-func NewDownloader(timeout time.Duration) *Downloader {
+func NewDownloader(timeout time.Duration, maxConcurrentDownloads int) *Downloader {
 	transport := &http.Transport{
 		ResponseHeaderTimeout: timeout,
 	}
@@ -29,12 +30,19 @@ func NewDownloader(timeout time.Duration) *Downloader {
 
 	return &Downloader{
 		client: client,
+		concurrentDownloadBarrier: make(chan interface{}, maxConcurrentDownloads),
 	}
 }
 
 func (downloader *Downloader) Download(url *url.URL, createDestination func() (*os.File, error), cachingInfoIn CachingInfoType) (path string, length int64, cachingInfoOut CachingInfoType, err error) {
+	downloader.concurrentDownloadBarrier <- nil
+	defer func() {
+		<-downloader.concurrentDownloadBarrier
+	}()
+
 	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
 		path, length, cachingInfoOut, err = downloader.fetchToFile(url, createDestination, cachingInfoIn)
+
 		if err == nil {
 			break
 		}

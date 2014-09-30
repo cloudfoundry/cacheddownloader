@@ -37,11 +37,11 @@ func (c CachingInfoType) Equal(other CachingInfoType) bool {
 	return c.ETag == other.ETag && c.LastModified == other.LastModified
 }
 
-func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration) *cachedDownloader {
+func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration, maxConcurrentDownloads int) *cachedDownloader {
 	os.RemoveAll(cachedPath)
 	os.MkdirAll(cachedPath, 0770)
 	return &cachedDownloader{
-		downloader:   NewDownloader(downloadTimeout),
+		downloader:   NewDownloader(downloadTimeout, maxConcurrentDownloads),
 		uncachedPath: uncachedPath,
 		cache:        NewCache(cachedPath, maxSizeInBytes),
 		lock:         &sync.Mutex{},
