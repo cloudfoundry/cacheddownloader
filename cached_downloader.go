@@ -26,7 +26,7 @@ type cachedDownloader struct {
 	cache        *FileCache
 
 	lock       *sync.Mutex
-	inProgress map[string]chan interface{}
+	inProgress map[string]chan struct{}
 }
 
 func (c CachingInfoType) isCacheable() bool {
@@ -45,7 +45,7 @@ func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadT
 		uncachedPath: uncachedPath,
 		cache:        NewCache(cachedPath, maxSizeInBytes),
 		lock:         &sync.Mutex{},
-		inProgress:   map[string]chan interface{}{},
+		inProgress:   map[string]chan struct{}{},
 	}
 }
 
@@ -103,12 +103,12 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.Re
 	return newReader, err
 }
 
-func (c *cachedDownloader) acquireLimiter(cacheKey string) chan interface{} {
+func (c *cachedDownloader) acquireLimiter(cacheKey string) chan struct{} {
 	for {
 		c.lock.Lock()
 		rateLimiter := c.inProgress[cacheKey]
 		if rateLimiter == nil {
-			rateLimiter = make(chan interface{})
+			rateLimiter = make(chan struct{})
 			c.inProgress[cacheKey] = rateLimiter
 			c.lock.Unlock()
 			return rateLimiter
@@ -118,7 +118,7 @@ func (c *cachedDownloader) acquireLimiter(cacheKey string) chan interface{} {
 	}
 }
 
-func (c *cachedDownloader) releaseLimiter(cacheKey string, limiter chan interface{}) {
+func (c *cachedDownloader) releaseLimiter(cacheKey string, limiter chan struct{}) {
 	c.lock.Lock()
 	delete(c.inProgress, cacheKey)
 	close(limiter)

@@ -17,7 +17,7 @@ const MAX_DOWNLOAD_ATTEMPTS = 3
 
 type Downloader struct {
 	client                    *http.Client
-	concurrentDownloadBarrier chan interface{}
+	concurrentDownloadBarrier chan struct{}
 }
 
 func NewDownloader(timeout time.Duration, maxConcurrentDownloads int) *Downloader {
@@ -30,12 +30,12 @@ func NewDownloader(timeout time.Duration, maxConcurrentDownloads int) *Downloade
 
 	return &Downloader{
 		client: client,
-		concurrentDownloadBarrier: make(chan interface{}, maxConcurrentDownloads),
+		concurrentDownloadBarrier: make(chan struct{}, maxConcurrentDownloads),
 	}
 }
 
 func (downloader *Downloader) Download(url *url.URL, createDestination func() (*os.File, error), cachingInfoIn CachingInfoType) (path string, length int64, cachingInfoOut CachingInfoType, err error) {
-	downloader.concurrentDownloadBarrier <- nil
+	downloader.concurrentDownloadBarrier <- struct{}{}
 	defer func() {
 		<-downloader.concurrentDownloadBarrier
 	}()
