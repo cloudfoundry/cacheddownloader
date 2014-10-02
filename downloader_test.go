@@ -3,11 +3,13 @@ package cacheddownloader_test
 import (
 	"crypto/md5"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	Url "net/url"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -256,7 +258,30 @@ var _ = Describe("Downloader", func() {
 
 			It("should return an error", func() {
 				downloadedFile, _, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{})
-				Ω(err).Should(HaveOccurred())
+				Ω(err.Error()).Should(ContainSubstring("Checksum"))
+				Ω(downloadedFile).Should(BeEmpty())
+				Ω(cachingInfo).Should(BeZero())
+			})
+		})
+
+		Context("when the Content-Length does not match the downloaded file size", func() {
+			BeforeEach(func() {
+				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					realMsg := "Hello, client"
+					incompleteMsg := "Hello, clientsss"
+
+					w.Header().Set("Content-Length", strconv.Itoa(len(realMsg)))
+
+					fmt.Fprint(w, incompleteMsg)
+				}))
+
+				serverUrl := testServer.URL + "/somepath"
+				url, _ = url.Parse(serverUrl)
+			})
+
+			It("should return an error", func() {
+				downloadedFile, _, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				Ω(err).Should(Equal(io.ErrUnexpectedEOF))
 				Ω(downloadedFile).Should(BeEmpty())
 				Ω(cachingInfo).Should(BeZero())
 			})
