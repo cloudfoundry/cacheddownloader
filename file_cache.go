@@ -3,7 +3,6 @@ package cacheddownloader
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -65,7 +64,7 @@ func (e *fileCacheEntry) decrementUse() {
 	}
 }
 
-func (e *fileCacheEntry) readCloser() (io.ReadCloser, error) {
+func (e *fileCacheEntry) readCloser() (*CachedFile, error) {
 	f, err := os.Open(e.filePath)
 	if err != nil {
 		return nil, err
@@ -81,7 +80,7 @@ func (e *fileCacheEntry) readCloser() (io.ReadCloser, error) {
 	return readCloser, nil
 }
 
-func (c *FileCache) Add(cacheKey string, sourcePath string, size int64, cachingInfo CachingInfoType) (io.ReadCloser, error) {
+func (c *FileCache) Add(cacheKey string, sourcePath string, size int64, cachingInfo CachingInfoType) (*CachedFile, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -119,7 +118,7 @@ func (c *FileCache) Add(cacheKey string, sourcePath string, size int64, cachingI
 	return newEntry.readCloser()
 }
 
-func (c *FileCache) Get(cacheKey string) (io.ReadCloser, CachingInfoType, error) {
+func (c *FileCache) Get(cacheKey string) (*CachedFile, CachingInfoType, error) {
 	lock.Lock()
 	defer lock.Unlock()
 

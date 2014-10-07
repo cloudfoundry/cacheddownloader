@@ -3,7 +3,6 @@ package cacheddownloader
 import (
 	"crypto/md5"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -12,7 +11,7 @@ import (
 )
 
 type CachedDownloader interface {
-	Fetch(url *url.URL, cacheKey string) (io.ReadCloser, error)
+	Fetch(url *url.URL, cacheKey string) (*CachedFile, error)
 }
 
 type CachingInfoType struct {
@@ -49,7 +48,7 @@ func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadT
 	}
 }
 
-func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string) (io.ReadCloser, error) {
+func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string) (*CachedFile, error) {
 	if cacheKey == "" {
 		return c.fetchUncachedFile(url)
 	}
@@ -58,7 +57,7 @@ func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string) (io.ReadCloser, 
 	return c.fetchCachedFile(url, cacheKey)
 }
 
-func (c *cachedDownloader) fetchUncachedFile(url *url.URL) (io.ReadCloser, error) {
+func (c *cachedDownloader) fetchUncachedFile(url *url.URL) (*CachedFile, error) {
 	download, err := c.downloadFile(url, "uncached", CachingInfoType{})
 	if err != nil {
 		return nil, err
@@ -67,7 +66,7 @@ func (c *cachedDownloader) fetchUncachedFile(url *url.URL) (io.ReadCloser, error
 	return tempFileRemoveOnClose(download.path)
 }
 
-func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.ReadCloser, error) {
+func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (*CachedFile, error) {
 	rateLimiter := c.acquireLimiter(cacheKey)
 	defer c.releaseLimiter(cacheKey, rateLimiter)
 
@@ -89,7 +88,7 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string) (io.Re
 		currentReader.Close()
 	}
 
-	var newReader io.ReadCloser
+	var newReader *CachedFile
 	if download.cachingInfo.isCacheable() {
 		newReader, err = c.cache.Add(cacheKey, download.path, download.size, download.cachingInfo)
 		if err == NotEnoughSpace {
@@ -125,7 +124,7 @@ func (c *cachedDownloader) releaseLimiter(cacheKey string, limiter chan struct{}
 	c.lock.Unlock()
 }
 
-func tempFileRemoveOnClose(path string) (io.ReadCloser, error) {
+func tempFileRemoveOnClose(path string) (*CachedFile, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
