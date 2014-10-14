@@ -3,7 +3,6 @@ package cacheddownloader_test
 import (
 	"crypto/md5"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -57,7 +56,6 @@ var _ = Describe("Downloader", func() {
 
 		Context("when the download is successful", func() {
 			var (
-				downloadSize int64
 				expectedSize int64
 
 				downloadErr    error
@@ -77,7 +75,7 @@ var _ = Describe("Downloader", func() {
 			JustBeforeEach(func() {
 				serverUrl := testServer.URL + "/somepath"
 				url, _ = url.Parse(serverUrl)
-				downloadedFile, downloadSize, downloadCachingInfo, downloadErr = downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(url, createDestFile, CachingInfoType{})
 			})
 
 			Context("and contains a matching MD5 Hash in the Etag", func() {
@@ -125,10 +123,6 @@ var _ = Describe("Downloader", func() {
 				It("should use the provided file as the download location", func() {
 					fileContents, _ := ioutil.ReadFile(downloadedFile)
 					Ω(fileContents).Should(ContainSubstring("Hello, client"))
-				})
-
-				It("return number of bytes it downloaded", func() {
-					Ω(downloadSize).Should(Equal(expectedSize))
 				})
 
 				It("returns the ETag", func() {
@@ -197,7 +191,7 @@ var _ = Describe("Downloader", func() {
 				downloadedFiles := make(chan string)
 
 				go func() {
-					downloadedFile, _, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
+					downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
 					errs <- err
 					downloadedFiles <- downloadedFile
 				}()
@@ -220,7 +214,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
 				Ω(err).Should(HaveOccurred())
 				Ω(downloadedFile).Should(BeEmpty())
 			})
@@ -235,7 +229,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
 				Ω(err).Should(HaveOccurred())
 				Ω(downloadedFile).Should(BeEmpty())
 			})
@@ -257,7 +251,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return an error", func() {
-				downloadedFile, _, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{})
 				Ω(err.Error()).Should(ContainSubstring("Checksum"))
 				Ω(downloadedFile).Should(BeEmpty())
 				Ω(cachingInfo).Should(BeZero())
@@ -280,8 +274,8 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return an error", func() {
-				downloadedFile, _, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{})
-				Ω(err).Should(Equal(io.ErrUnexpectedEOF))
+				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				Ω(err).Should(HaveOccurred())
 				Ω(downloadedFile).Should(BeEmpty())
 				Ω(cachingInfo).Should(BeZero())
 			})
@@ -334,7 +328,7 @@ var _ = Describe("Downloader", func() {
 			os.RemoveAll(tempDir)
 		})
 
-		downloadTestFile := func() (path string, length int64, cachingInfoOut CachingInfoType, err error) {
+		downloadTestFile := func() (path string, cachingInfoOut CachingInfoType, err error) {
 			return downloader.Download(
 				url,
 				func() (*os.File, error) {
@@ -394,9 +388,8 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return that it did not download", func() {
-				downloadedFile, size, _, err := downloader.Download(url, createDestFile, cachedInfo)
+				downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo)
 				Ω(downloadedFile).Should(BeEmpty())
-				Ω(size).Should(Equal(int64(0)))
 				Ω(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -404,7 +397,6 @@ var _ = Describe("Downloader", func() {
 		Context("when the server replies with 200", func() {
 			var (
 				downloadedFile string
-				size           int64
 				err            error
 			)
 
@@ -419,15 +411,10 @@ var _ = Describe("Downloader", func() {
 				}
 			})
 
-			It("should return that it did download and the file size", func() {
-				downloadedFile, size, _, err = downloader.Download(url, createDestFile, cachedInfo)
-				Ω(downloadedFile).ShouldNot(BeEmpty())
-				Ω(size).Should(Equal(int64(len(body))))
-				Ω(err).ShouldNot(HaveOccurred())
-			})
-
 			It("should download the file", func() {
-				downloadedFile, _, _, _ = downloader.Download(url, createDestFile, cachedInfo)
+				downloadedFile, _, err = downloader.Download(url, createDestFile, cachedInfo)
+				Ω(err).ShouldNot(HaveOccurred())
+
 				info, err := os.Stat(downloadedFile)
 				Ω(err).ShouldNot(HaveOccurred())
 				Ω(info.Size()).Should(Equal(int64(len(body))))
@@ -452,9 +439,8 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return false with an error", func() {
-				downloadedFile, size, _, err := downloader.Download(url, createDestFile, cachedInfo)
+				downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo)
 				Ω(downloadedFile).Should(BeEmpty())
-				Ω(size).Should(Equal(int64(0)))
 				Ω(err).Should(HaveOccurred())
 			})
 		})

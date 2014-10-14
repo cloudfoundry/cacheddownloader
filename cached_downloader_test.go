@@ -3,7 +3,6 @@ package cacheddownloader_test
 import (
 	"crypto/md5"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	Url "net/url"
@@ -15,7 +14,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
-	"github.com/pivotal-golang/cacheddownloader"
+	. "github.com/pivotal-golang/cacheddownloader"
 )
 
 const MAX_CONCURRENT_DOWNLOADS = 10
@@ -26,7 +25,7 @@ func computeMd5(key string) string {
 
 var _ = Describe("File cache", func() {
 	var (
-		cache           cacheddownloader.CachedDownloader
+		cache           CachedDownloader
 		cachedPath      string
 		uncachedPath    string
 		maxSizeInBytes  int64
@@ -48,7 +47,7 @@ var _ = Describe("File cache", func() {
 
 		cacheKey = "the-cache-key"
 
-		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS)
+		cache = New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS)
 		server = ghttp.NewServer()
 
 		url, err = Url.Parse(server.URL() + "/my_file")
@@ -61,14 +60,14 @@ var _ = Describe("File cache", func() {
 	})
 
 	var (
-		file io.ReadCloser
+		file *CachedFile
 		err  error
 	)
 
 	Describe("when the cache folder does not exist", func() {
 		It("should create it", func() {
 			os.RemoveAll(cachedPath)
-			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS)
+			cache = New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS)
 			_, err := os.Stat(cachedPath)
 			Ω(err).ShouldNot(HaveOccurred())
 		})
@@ -78,7 +77,7 @@ var _ = Describe("File cache", func() {
 		It("should nuke that stuff", func() {
 			filename := filepath.Join(cachedPath, "last_nights_dinner")
 			ioutil.WriteFile(filename, []byte("leftovers"), 0666)
-			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS)
+			cache = New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS)
 			_, err := os.Stat(filename)
 			Ω(err).Should(HaveOccurred())
 		})
@@ -96,7 +95,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), header),
 				))
 
-				file, err = cache.Fetch(url, "")
+				file, err = cache.Fetch(url, "", NoopTransform)
 			})
 
 			It("should not error", func() {
@@ -119,7 +118,7 @@ var _ = Describe("File cache", func() {
 		Context("when the download fails", func() {
 			BeforeEach(func() {
 				server.AllowUnhandledRequests = true //will 500 for any attempted requests
-				file, err = cache.Fetch(url, "")
+				file, err = cache.Fetch(url, "", NoopTransform)
 			})
 
 			It("should return an error and no file", func() {
@@ -137,6 +136,7 @@ var _ = Describe("File cache", func() {
 	Describe("When providing a file that should be cached", func() {
 		var cacheFilePath string
 		var returnedHeader http.Header
+
 		BeforeEach(func() {
 			cacheFilePath = filepath.Join(cachedPath, computeMd5(cacheKey))
 			returnedHeader = http.Header{}
@@ -144,6 +144,21 @@ var _ = Describe("File cache", func() {
 		})
 
 		Context("when the file is not in the cache", func() {
+			var (
+				transformer CacheTransformer
+
+				fetchedFile *CachedFile
+				fetchErr    error
+			)
+
+			BeforeEach(func() {
+				transformer = NoopTransform
+			})
+
+			JustBeforeEach(func() {
+				fetchedFile, fetchErr = cache.Fetch(url, cacheKey, transformer)
+			})
+
 			Context("when the download succeeds", func() {
 				BeforeEach(func() {
 					downloadContent = []byte(strings.Repeat("7", int(maxSizeInBytes/2)))
@@ -154,17 +169,15 @@ var _ = Describe("File cache", func() {
 						}),
 						ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 					))
-
-					file, err = cache.Fetch(url, cacheKey)
 				})
 
 				It("should not error", func() {
-					Ω(err).ShouldNot(HaveOccurred())
+					Ω(fetchErr).ShouldNot(HaveOccurred())
 				})
 
 				It("should return a readCloser that streams the file", func() {
-					Ω(file).ShouldNot(BeNil())
-					Ω(ioutil.ReadAll(file)).Should(Equal(downloadContent))
+					Ω(fetchedFile).ShouldNot(BeNil())
+					Ω(ioutil.ReadAll(fetchedFile)).Should(Equal(downloadContent))
 				})
 
 				It("should return a file within the cache", func() {
@@ -173,6 +186,25 @@ var _ = Describe("File cache", func() {
 
 				It("should remove any temporary assets generated along the way", func() {
 					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
+				})
+
+				Describe("downloading with a transformer", func() {
+					BeforeEach(func() {
+						transformer = func(source string, destination string) (int64, error) {
+							err := ioutil.WriteFile(destination, []byte("hello tmp"), 0644)
+							Ω(err).ShouldNot(HaveOccurred())
+
+							return 100, err
+						}
+					})
+
+					It("passes the download through the transformer", func() {
+						Ω(fetchErr).ShouldNot(HaveOccurred())
+
+						content, err := ioutil.ReadAll(fetchedFile)
+						Ω(err).ShouldNot(HaveOccurred())
+						Ω(string(content)).Should(Equal("hello tmp"))
+					})
 				})
 			})
 
@@ -186,21 +218,19 @@ var _ = Describe("File cache", func() {
 						}),
 						ghttp.RespondWith(http.StatusOK, string(downloadContent)),
 					))
-
-					file, err = cache.Fetch(url, cacheKey)
 				})
 
 				It("should not error", func() {
-					Ω(err).ShouldNot(HaveOccurred())
+					Ω(fetchErr).ShouldNot(HaveOccurred())
 				})
 
 				It("should return a readCloser that streams the file", func() {
-					Ω(file).ShouldNot(BeNil())
-					Ω(ioutil.ReadAll(file)).Should(Equal(downloadContent))
+					Ω(fetchedFile).ShouldNot(BeNil())
+					Ω(ioutil.ReadAll(fetchedFile)).Should(Equal(downloadContent))
 				})
 
 				It("should not store the file", func() {
-					file.Close()
+					fetchedFile.Close()
 					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
 					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
 				})
@@ -209,56 +239,16 @@ var _ = Describe("File cache", func() {
 			Context("when the download fails", func() {
 				BeforeEach(func() {
 					server.AllowUnhandledRequests = true //will 500 for any attempted requests
-					file, err = cache.Fetch(url, cacheKey)
 				})
 
 				It("should return an error and no file", func() {
-					Ω(file).Should(BeNil())
-					Ω(err).Should(HaveOccurred())
+					Ω(fetchedFile).Should(BeNil())
+					Ω(fetchErr).Should(HaveOccurred())
 				})
 
 				It("should clean up after itself", func() {
 					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
 					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
-				})
-			})
-
-			Context("when multiple requests occur", func() {
-				var barrier chan interface{}
-				var results chan bool
-
-				BeforeEach(func() {
-					barrier = make(chan interface{}, 1)
-					results = make(chan bool, 1)
-
-					downloadContent = []byte(strings.Repeat("7", int(maxSizeInBytes/2)))
-					server.AppendHandlers(
-						ghttp.CombineHandlers(
-							ghttp.VerifyRequest("GET", "/my_file"),
-							http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-								barrier <- nil
-								Consistently(results, .5).ShouldNot(Receive())
-							}),
-							ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
-						),
-						ghttp.CombineHandlers(
-							ghttp.VerifyRequest("GET", "/my_file"),
-							http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-								results <- true
-							}),
-							ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
-						),
-					)
-				})
-
-				It("processes one at a time", func() {
-					go func() {
-						cache.Fetch(url, cacheKey)
-						barrier <- nil
-					}()
-					<-barrier
-					cache.Fetch(url, cacheKey)
-					<-barrier
 				})
 			})
 		})
@@ -277,7 +267,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(fileContent), returnedHeader),
 				))
 
-				f, _ := cache.Fetch(url, cacheKey)
+				f, _ := cache.Fetch(url, cacheKey, NoopTransform)
 				defer f.Close()
 
 				downloadContent = "now you don't"
@@ -295,7 +285,7 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("should perform the request with the correct modified headers", func() {
-				cache.Fetch(url, cacheKey)
+				cache.Fetch(url, cacheKey, NoopTransform)
 				Ω(server.ReceivedRequests()).Should(HaveLen(2))
 			})
 
@@ -305,7 +295,7 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should redownload the file", func() {
-					f, _ := cache.Fetch(url, cacheKey)
+					f, _ := cache.Fetch(url, cacheKey, NoopTransform)
 					defer f.Close()
 
 					paths, _ := filepath.Glob(cacheFilePath + "*")
@@ -313,13 +303,13 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should return a readcloser pointing to the file", func() {
-					file, err := cache.Fetch(url, cacheKey)
+					file, err := cache.Fetch(url, cacheKey, NoopTransform)
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadAll(file)).Should(Equal([]byte(downloadContent)))
 				})
 
 				It("should have put the file in the cache", func() {
-					f, err := cache.Fetch(url, cacheKey)
+					f, err := cache.Fetch(url, cacheKey, NoopTransform)
 					f.Close()
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(1))
@@ -334,13 +324,13 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should return a readcloser pointing to the file", func() {
-					file, err := cache.Fetch(url, cacheKey)
+					file, err := cache.Fetch(url, cacheKey, NoopTransform)
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadAll(file)).Should(Equal([]byte(downloadContent)))
 				})
 
 				It("should have removed the file from the cache", func() {
-					f, err := cache.Fetch(url, cacheKey)
+					f, err := cache.Fetch(url, cacheKey, NoopTransform)
 					f.Close()
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
@@ -354,7 +344,7 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should not redownload the file", func() {
-					f, err := cache.Fetch(url, cacheKey)
+					f, err := cache.Fetch(url, cacheKey, NoopTransform)
 					Ω(err).ShouldNot(HaveOccurred())
 					defer f.Close()
 
@@ -363,7 +353,7 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should return a readcloser pointing to the file", func() {
-					file, err := cache.Fetch(url, cacheKey)
+					file, err := cache.Fetch(url, cacheKey, NoopTransform)
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadAll(file)).Should(Equal(fileContent))
 				})
@@ -379,7 +369,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 				))
 
-				file, err = cache.Fetch(url, cacheKey)
+				file, err = cache.Fetch(url, cacheKey, NoopTransform)
 			})
 
 			It("should not error", func() {
@@ -411,7 +401,7 @@ var _ = Describe("File cache", func() {
 						ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 					))
 
-					file, err = cache.Fetch(url, cacheKey)
+					file, err = cache.Fetch(url, cacheKey, NoopTransform)
 				})
 
 				It("should not error", func() {
@@ -435,7 +425,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 				))
 
-				cachedFile, err := cache.Fetch(url, name)
+				cachedFile, err := cache.Fetch(url, name, NoopTransform)
 				Ω(err).ShouldNot(HaveOccurred())
 				Ω(ioutil.ReadAll(cachedFile)).Should(Equal(downloadContent))
 				cachedFile.Close()
@@ -467,7 +457,7 @@ var _ = Describe("File cache", func() {
 					))
 
 					url, _ = Url.Parse(server.URL() + "/A")
-					cache.Fetch(url, "A")
+					cache.Fetch(url, "A", NoopTransform)
 				})
 
 				It("considers that file to be the newest", func() {
@@ -484,4 +474,53 @@ var _ = Describe("File cache", func() {
 			})
 		})
 	})
+
+	Context("when multiple requests occur", func() {
+		var barrier chan interface{}
+		var results chan bool
+
+		BeforeEach(func() {
+			barrier = make(chan interface{}, 1)
+			results = make(chan bool, 1)
+
+			downloadContent = []byte(strings.Repeat("7", int(maxSizeInBytes/2)))
+			server.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/my_file"),
+					http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+						barrier <- nil
+						Consistently(results, .5).ShouldNot(Receive())
+					}),
+					ghttp.RespondWith(http.StatusOK, string(downloadContent)),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/my_file"),
+					http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+						results <- true
+					}),
+					ghttp.RespondWith(http.StatusOK, string(downloadContent)),
+				),
+			)
+		})
+
+		It("processes one at a time", func() {
+			go func() {
+				cache.Fetch(url, cacheKey, NoopTransform)
+				barrier <- nil
+			}()
+			<-barrier
+			cache.Fetch(url, cacheKey, NoopTransform)
+			<-barrier
+		})
+	})
 })
+
+type constTransformer struct {
+	file string
+	size int64
+	err  error
+}
+
+func (t constTransformer) ConstTransform(path string) (string, int64, error) {
+	return t.file, t.size, t.err
+}
