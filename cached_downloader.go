@@ -3,6 +3,7 @@ package cacheddownloader
 import (
 	"crypto/md5"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -16,7 +17,7 @@ import (
 type CacheTransformer func(source, destination string) (newSize int64, wellCrap error)
 
 type CachedDownloader interface {
-	Fetch(url *url.URL, cacheKey string, transformer CacheTransformer) (*CachedFile, error)
+	Fetch(urlToFetch *url.URL, cacheKey string, transformer CacheTransformer) (io.ReadCloser, error)
 }
 
 func NoopTransform(source, destination string) (int64, error) {
@@ -67,7 +68,7 @@ func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadT
 	}
 }
 
-func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string, transformer CacheTransformer) (*CachedFile, error) {
+func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string, transformer CacheTransformer) (io.ReadCloser, error) {
 	if cacheKey == "" {
 		return c.fetchUncachedFile(url, transformer)
 	}
