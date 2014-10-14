@@ -1,5 +1,3 @@
-// TODO tmpdir location should be injected somehow
-
 package cacheddownloader
 
 import (
