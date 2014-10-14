@@ -3,6 +3,7 @@ package cacheddownloader_test
 import (
 	"crypto/md5"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	Url "net/url"
@@ -60,7 +61,7 @@ var _ = Describe("File cache", func() {
 	})
 
 	var (
-		file *CachedFile
+		file io.ReadCloser
 		err  error
 	)
 
@@ -147,7 +148,7 @@ var _ = Describe("File cache", func() {
 			var (
 				transformer CacheTransformer
 
-				fetchedFile *CachedFile
+				fetchedFile io.ReadCloser
 				fetchErr    error
 			)
 
