@@ -3,9 +3,11 @@ package cacheddownloader
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,8 +22,18 @@ type Downloader struct {
 	concurrentDownloadBarrier chan struct{}
 }
 
-func NewDownloader(timeout time.Duration, maxConcurrentDownloads int) *Downloader {
+func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool) *Downloader {
 	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		Dial: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout: 10 * time.Second,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: skipSSLVerification,
+			MinVersion:         tls.VersionTLS10,
+		},
 		ResponseHeaderTimeout: timeout,
 	}
 	client := &http.Client{

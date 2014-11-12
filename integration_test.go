@@ -78,7 +78,7 @@ var _ = Describe("Integration", func() {
 
 	Describe("Cached Downloader", func() {
 		BeforeEach(func() {
-			downloader = cacheddownloader.New(cachedPath, uncachedPath, cacheMaxSizeInBytes, downloadTimeout, 10)
+			downloader = cacheddownloader.New(cachedPath, uncachedPath, cacheMaxSizeInBytes, downloadTimeout, 10, false)
 
 			// touch a file on disk
 			err := ioutil.WriteFile(filepath.Join(serverPath, "file"), []byte("a"), 0666)

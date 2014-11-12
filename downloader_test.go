@@ -37,7 +37,7 @@ var _ = Describe("Downloader", func() {
 
 	BeforeEach(func() {
 		testServer = nil
-		downloader = NewDownloader(100*time.Millisecond, 10)
+		downloader = NewDownloader(100*time.Millisecond, 10, false)
 		lock = &sync.Mutex{}
 	})
 
@@ -295,7 +295,7 @@ var _ = Describe("Downloader", func() {
 			barrier = make(chan interface{}, 1)
 			results = make(chan bool, 1)
 
-			downloader = NewDownloader(1*time.Second, 1)
+			downloader = NewDownloader(1*time.Second, 1, false)
 
 			var err error
 			tempDir, err = ioutil.TempDir("", "temp-dl-dir")
