@@ -14,10 +14,10 @@ import (
 // called after a new object has entered the cache.
 // it is assumed that `path` will be removed, if a new path is returned.
 // a noop transformer returns the given path and its detected size.
-type CacheTransformer func(source, destination string) (newSize int64, wellCrap error)
+type CacheTransformer func(source, destination string) (newSize int64, err error)
 
 type CachedDownloader interface {
-	Fetch(urlToFetch *url.URL, cacheKey string, transformer CacheTransformer) (io.ReadCloser, error)
+	Fetch(urlToFetch *url.URL, cacheKey string, transformer CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, error)
 }
 
 func NoopTransform(source, destination string) (int64, error) {
@@ -68,17 +68,17 @@ func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadT
 	}
 }
 
-func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string, transformer CacheTransformer) (io.ReadCloser, error) {
+func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string, transformer CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, error) {
 	if cacheKey == "" {
-		return c.fetchUncachedFile(url, transformer)
+		return c.fetchUncachedFile(url, transformer, cancelChan)
 	}
 
 	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
-	return c.fetchCachedFile(url, cacheKey, transformer)
+	return c.fetchCachedFile(url, cacheKey, transformer, cancelChan)
 }
 
-func (c *cachedDownloader) fetchUncachedFile(url *url.URL, transformer CacheTransformer) (*CachedFile, error) {
-	download, _, err := c.populateCache(url, "uncached", CachingInfoType{}, transformer)
+func (c *cachedDownloader) fetchUncachedFile(url *url.URL, transformer CacheTransformer, cancelChan <-chan struct{}) (*CachedFile, error) {
+	download, _, err := c.populateCache(url, "uncached", CachingInfoType{}, transformer, cancelChan)
 	if err != nil {
 		return nil, err
 	}
@@ -86,15 +86,18 @@ func (c *cachedDownloader) fetchUncachedFile(url *url.URL, transformer CacheTran
 	return tempFileRemoveOnClose(download.path)
 }
 
-func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, transformer CacheTransformer) (*CachedFile, error) {
-	rateLimiter := c.acquireLimiter(cacheKey)
+func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, transformer CacheTransformer, cancelChan <-chan struct{}) (*CachedFile, error) {
+	rateLimiter, err := c.acquireLimiter(cacheKey, cancelChan)
+	if err != nil {
+		return nil, err
+	}
 	defer c.releaseLimiter(cacheKey, rateLimiter)
 
 	// lookup cache entry
 	currentReader, currentCachingInfo, getErr := c.cache.Get(cacheKey)
 
 	// download (short circuits if endpoint respects etag/etc.)
-	download, cacheIsWarm, err := c.populateCache(url, cacheKey, currentCachingInfo, transformer)
+	download, cacheIsWarm, err := c.populateCache(url, cacheKey, currentCachingInfo, transformer, cancelChan)
 	if err != nil {
 		if currentReader != nil {
 			currentReader.Close()
@@ -128,7 +131,7 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, transf
 	return newReader, err
 }
 
-func (c *cachedDownloader) acquireLimiter(cacheKey string) chan struct{} {
+func (c *cachedDownloader) acquireLimiter(cacheKey string, cancelChan <-chan struct{}) (chan struct{}, error) {
 	for {
 		c.lock.Lock()
 		rateLimiter := c.inProgress[cacheKey]
@@ -136,10 +139,15 @@ func (c *cachedDownloader) acquireLimiter(cacheKey string) chan struct{} {
 			rateLimiter = make(chan struct{})
 			c.inProgress[cacheKey] = rateLimiter
 			c.lock.Unlock()
-			return rateLimiter
+			return rateLimiter, nil
 		}
 		c.lock.Unlock()
-		<-rateLimiter
+
+		select {
+		case <-rateLimiter:
+		case <-cancelChan:
+			return nil, ErrDownloadCancelled
+		}
 	}
 }
 
@@ -172,10 +180,11 @@ func (c *cachedDownloader) populateCache(
 	name string,
 	cachingInfo CachingInfoType,
 	transformer CacheTransformer,
+	cancelChan <-chan struct{},
 ) (download, bool, error) {
 	filename, cachingInfo, err := c.downloader.Download(url, func() (*os.File, error) {
 		return ioutil.TempFile(c.uncachedPath, name+"-")
-	}, cachingInfo, nil)
+	}, cachingInfo, cancelChan)
 	if err != nil {
 		return download{}, false, err
 	}

@@ -34,6 +34,7 @@ var _ = Describe("File cache", func() {
 		downloadContent []byte
 		url             *Url.URL
 		server          *ghttp.Server
+		cancelChan      chan struct{}
 	)
 
 	BeforeEach(func() {
@@ -53,6 +54,8 @@ var _ = Describe("File cache", func() {
 
 		url, err = Url.Parse(server.URL() + "/my_file")
 		Ω(err).ShouldNot(HaveOccurred())
+
+		cancelChan = make(chan struct{})
 	})
 
 	AfterEach(func() {
@@ -96,7 +99,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), header),
 				))
 
-				file, err = cache.Fetch(url, "", NoopTransform)
+				file, err = cache.Fetch(url, "", NoopTransform, cancelChan)
 			})
 
 			It("should not error", func() {
@@ -119,7 +122,7 @@ var _ = Describe("File cache", func() {
 		Context("when the download fails", func() {
 			BeforeEach(func() {
 				server.AllowUnhandledRequests = true //will 500 for any attempted requests
-				file, err = cache.Fetch(url, "", NoopTransform)
+				file, err = cache.Fetch(url, "", NoopTransform, cancelChan)
 			})
 
 			It("should return an error and no file", func() {
@@ -157,7 +160,7 @@ var _ = Describe("File cache", func() {
 			})
 
 			JustBeforeEach(func() {
-				fetchedFile, fetchErr = cache.Fetch(url, cacheKey, transformer)
+				fetchedFile, fetchErr = cache.Fetch(url, cacheKey, transformer, cancelChan)
 			})
 
 			Context("when the download succeeds", func() {
@@ -268,7 +271,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(fileContent), returnedHeader),
 				))
 
-				f, _ := cache.Fetch(url, cacheKey, NoopTransform)
+				f, _ := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 				defer f.Close()
 
 				downloadContent = "now you don't"
@@ -286,7 +289,7 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("should perform the request with the correct modified headers", func() {
-				cache.Fetch(url, cacheKey, NoopTransform)
+				cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 				Ω(server.ReceivedRequests()).Should(HaveLen(2))
 			})
 
@@ -296,7 +299,7 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should redownload the file", func() {
-					f, _ := cache.Fetch(url, cacheKey, NoopTransform)
+					f, _ := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					defer f.Close()
 
 					paths, _ := filepath.Glob(cacheFilePath + "*")
@@ -304,13 +307,13 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should return a readcloser pointing to the file", func() {
-					file, err := cache.Fetch(url, cacheKey, NoopTransform)
+					file, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadAll(file)).Should(Equal([]byte(downloadContent)))
 				})
 
 				It("should have put the file in the cache", func() {
-					f, err := cache.Fetch(url, cacheKey, NoopTransform)
+					f, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					f.Close()
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(1))
@@ -325,13 +328,13 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should return a readcloser pointing to the file", func() {
-					file, err := cache.Fetch(url, cacheKey, NoopTransform)
+					file, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadAll(file)).Should(Equal([]byte(downloadContent)))
 				})
 
 				It("should have removed the file from the cache", func() {
-					f, err := cache.Fetch(url, cacheKey, NoopTransform)
+					f, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					f.Close()
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
@@ -345,7 +348,7 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should not redownload the file", func() {
-					f, err := cache.Fetch(url, cacheKey, NoopTransform)
+					f, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					Ω(err).ShouldNot(HaveOccurred())
 					defer f.Close()
 
@@ -354,7 +357,7 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should return a readcloser pointing to the file", func() {
-					file, err := cache.Fetch(url, cacheKey, NoopTransform)
+					file, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(ioutil.ReadAll(file)).Should(Equal(fileContent))
 				})
@@ -370,7 +373,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 				))
 
-				file, err = cache.Fetch(url, cacheKey, NoopTransform)
+				file, err = cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 			})
 
 			It("should not error", func() {
@@ -402,7 +405,7 @@ var _ = Describe("File cache", func() {
 						ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 					))
 
-					file, err = cache.Fetch(url, cacheKey, NoopTransform)
+					file, err = cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 				})
 
 				It("should not error", func() {
@@ -426,7 +429,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 				))
 
-				cachedFile, err := cache.Fetch(url, name, NoopTransform)
+				cachedFile, err := cache.Fetch(url, name, NoopTransform, cancelChan)
 				Ω(err).ShouldNot(HaveOccurred())
 				Ω(ioutil.ReadAll(cachedFile)).Should(Equal(downloadContent))
 				cachedFile.Close()
@@ -458,7 +461,7 @@ var _ = Describe("File cache", func() {
 					))
 
 					url, _ = Url.Parse(server.URL() + "/A")
-					cache.Fetch(url, "A", NoopTransform)
+					cache.Fetch(url, "A", NoopTransform, cancelChan)
 				})
 
 				It("considers that file to be the newest", func() {
@@ -476,42 +479,84 @@ var _ = Describe("File cache", func() {
 		})
 	})
 
-	Context("when multiple requests occur", func() {
-		var barrier chan interface{}
-		var results chan bool
+	Describe("rate limiting", func() {
+		Context("when multiple, concurrent requests occur", func() {
+			var barrier chan interface{}
+			var results chan bool
 
-		BeforeEach(func() {
-			barrier = make(chan interface{}, 1)
-			results = make(chan bool, 1)
+			BeforeEach(func() {
+				barrier = make(chan interface{}, 1)
+				results = make(chan bool, 1)
 
-			downloadContent = []byte(strings.Repeat("7", int(maxSizeInBytes/2)))
-			server.AppendHandlers(
-				ghttp.CombineHandlers(
-					ghttp.VerifyRequest("GET", "/my_file"),
-					http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-						barrier <- nil
-						Consistently(results, .5).ShouldNot(Receive())
-					}),
-					ghttp.RespondWith(http.StatusOK, string(downloadContent)),
-				),
-				ghttp.CombineHandlers(
-					ghttp.VerifyRequest("GET", "/my_file"),
-					http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-						results <- true
-					}),
-					ghttp.RespondWith(http.StatusOK, string(downloadContent)),
-				),
-			)
+				downloadContent = []byte(strings.Repeat("7", int(maxSizeInBytes/2)))
+				server.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", "/my_file"),
+						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+							barrier <- nil
+							Consistently(results, .5).ShouldNot(Receive())
+						}),
+						ghttp.RespondWith(http.StatusOK, string(downloadContent)),
+					),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", "/my_file"),
+						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+							results <- true
+						}),
+						ghttp.RespondWith(http.StatusOK, string(downloadContent)),
+					),
+				)
+			})
+
+			It("processes one at a time", func() {
+				go func() {
+					cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
+					barrier <- nil
+				}()
+				<-barrier
+				cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
+				<-barrier
+			})
 		})
 
-		It("processes one at a time", func() {
-			go func() {
-				cache.Fetch(url, cacheKey, NoopTransform)
-				barrier <- nil
-			}()
-			<-barrier
-			cache.Fetch(url, cacheKey, NoopTransform)
-			<-barrier
+		Context("when cancelling", func() {
+			var requestInitiated chan struct{}
+			var completeRequest chan struct{}
+
+			BeforeEach(func() {
+				requestInitiated = make(chan struct{})
+				completeRequest = make(chan struct{})
+
+				server.AllowUnhandledRequests = true
+				server.AppendHandlers(
+					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						requestInitiated <- struct{}{}
+						<-completeRequest
+						w.Write([]byte("response data..."))
+					}),
+				)
+
+				serverUrl := server.URL() + "/somepath"
+				url, _ = url.Parse(serverUrl)
+			})
+
+			It("stops waiting", func() {
+				errs := make(chan error)
+
+				go func() {
+					_, err := cache.Fetch(url, cacheKey, NoopTransform, make(chan struct{}))
+					errs <- err
+				}()
+				Eventually(requestInitiated).Should(Receive())
+
+				close(cancelChan)
+
+				_, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
+				Ω(err).Should(Equal(ErrDownloadCancelled))
+
+				close(completeRequest)
+				Eventually(errs).Should(Receive(BeNil()))
+			})
 		})
 	})
 })

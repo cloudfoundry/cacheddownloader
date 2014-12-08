@@ -57,7 +57,7 @@ var _ = Describe("Integration", func() {
 		url, err := url.Parse(server.URL + "/file")
 		Ω(err).ShouldNot(HaveOccurred())
 
-		reader, err := downloader.Fetch(url, "the-cache-key", cacheddownloader.NoopTransform)
+		reader, err := downloader.Fetch(url, "the-cache-key", cacheddownloader.NoopTransform, make(chan struct{}))
 		Ω(err).ShouldNot(HaveOccurred())
 		defer reader.Close()
 
