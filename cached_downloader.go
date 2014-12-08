@@ -175,7 +175,7 @@ func (c *cachedDownloader) populateCache(
 ) (download, bool, error) {
 	filename, cachingInfo, err := c.downloader.Download(url, func() (*os.File, error) {
 		return ioutil.TempFile(c.uncachedPath, name+"-")
-	}, cachingInfo)
+	}, cachingInfo, nil)
 	if err != nil {
 		return download{}, false, err
 	}

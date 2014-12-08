@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,8 @@ import (
 )
 
 const MAX_DOWNLOAD_ATTEMPTS = 3
+
+var ErrDownloadCancelled error = errors.New("Download cancelled")
 
 type Downloader struct {
 	client                    *http.Client
@@ -46,16 +49,27 @@ func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVer
 	}
 }
 
-func (downloader *Downloader) Download(url *url.URL, createDestination func() (*os.File, error), cachingInfoIn CachingInfoType) (path string, cachingInfoOut CachingInfoType, err error) {
-	downloader.concurrentDownloadBarrier <- struct{}{}
+func (downloader *Downloader) Download(
+	url *url.URL,
+	createDestination func() (*os.File, error),
+	cachingInfoIn CachingInfoType,
+	cancelChan <-chan struct{},
+) (path string, cachingInfoOut CachingInfoType, err error) {
+
+	select {
+	case downloader.concurrentDownloadBarrier <- struct{}{}:
+	case <-cancelChan:
+		return "", CachingInfoType{}, ErrDownloadCancelled
+	}
+
 	defer func() {
 		<-downloader.concurrentDownloadBarrier
 	}()
 
 	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
-		path, cachingInfoOut, err = downloader.fetchToFile(url, createDestination, cachingInfoIn)
+		path, cachingInfoOut, err = downloader.fetchToFile(url, createDestination, cachingInfoIn, cancelChan)
 
-		if err == nil {
+		if err == ErrDownloadCancelled || err == nil {
 			break
 		}
 	}
@@ -67,7 +81,12 @@ func (downloader *Downloader) Download(url *url.URL, createDestination func() (*
 	return
 }
 
-func (downloader *Downloader) fetchToFile(url *url.URL, createDestination func() (*os.File, error), cachingInfoIn CachingInfoType) (string, CachingInfoType, error) {
+func (downloader *Downloader) fetchToFile(
+	url *url.URL,
+	createDestination func() (*os.File, error),
+	cachingInfoIn CachingInfoType,
+	cancelChan <-chan struct{},
+) (string, CachingInfoType, error) {
 	var req *http.Request
 	var err error
 
@@ -83,12 +102,29 @@ func (downloader *Downloader) fetchToFile(url *url.URL, createDestination func()
 		req.Header.Add("If-Modified-Since", cachingInfoIn.LastModified)
 	}
 
+	completeChan := make(chan struct{})
+	defer close(completeChan)
+
+	if transport, ok := downloader.client.Transport.(*http.Transport); ok {
+		go func() {
+			select {
+			case <-completeChan:
+			case <-cancelChan:
+				transport.CancelRequest(req)
+			}
+		}()
+	}
+
 	var resp *http.Response
 	resp, err = downloader.client.Do(req)
 	if err != nil {
+		select {
+		case <-cancelChan:
+			err = ErrDownloadCancelled
+		default:
+		}
 		return "", CachingInfoType{}, err
 	}
-
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotModified {
@@ -122,10 +158,23 @@ func (downloader *Downloader) fetchToFile(url *url.URL, createDestination func()
 		return "", CachingInfoType{}, err
 	}
 
+	go func() {
+		select {
+		case <-completeChan:
+		case <-cancelChan:
+			resp.Body.Close()
+		}
+	}()
+
 	hash := md5.New()
 
 	_, err = io.Copy(io.MultiWriter(destinationFile, hash), resp.Body)
 	if err != nil {
+		select {
+		case <-cancelChan:
+			err = ErrDownloadCancelled
+		default:
+		}
 		return "", CachingInfoType{}, err
 	}
 

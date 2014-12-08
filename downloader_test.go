@@ -1,6 +1,7 @@
 package cacheddownloader_test
 
 import (
+	"bytes"
 	"crypto/md5"
 	"fmt"
 	"io/ioutil"
@@ -30,6 +31,7 @@ var _ = Describe("Downloader", func() {
 	var testServer *httptest.Server
 	var serverRequestUrls []string
 	var lock *sync.Mutex
+	var cancelChan chan struct{}
 
 	createDestFile := func() (*os.File, error) {
 		return ioutil.TempFile("", "foo")
@@ -39,9 +41,10 @@ var _ = Describe("Downloader", func() {
 		testServer = nil
 		downloader = NewDownloader(100*time.Millisecond, 10, false)
 		lock = &sync.Mutex{}
+		cancelChan = make(chan struct{}, 0)
 	})
 
-	Describe("download", func() {
+	Describe("Download", func() {
 		var url *Url.URL
 
 		BeforeEach(func() {
@@ -75,7 +78,7 @@ var _ = Describe("Downloader", func() {
 			JustBeforeEach(func() {
 				serverUrl := testServer.URL + "/somepath"
 				url, _ = url.Parse(serverUrl)
-				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
 			})
 
 			Context("and contains a matching MD5 Hash in the Etag", func() {
@@ -191,7 +194,7 @@ var _ = Describe("Downloader", func() {
 				downloadedFiles := make(chan string)
 
 				go func() {
-					downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
+					downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
 					errs <- err
 					downloadedFiles <- downloadedFile
 				}()
@@ -214,7 +217,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
 				Ω(err).Should(HaveOccurred())
 				Ω(downloadedFile).Should(BeEmpty())
 			})
@@ -229,7 +232,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
 				Ω(err).Should(HaveOccurred())
 				Ω(downloadedFile).Should(BeEmpty())
 			})
@@ -251,7 +254,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
 				Ω(err.Error()).Should(ContainSubstring("Checksum"))
 				Ω(downloadedFile).Should(BeEmpty())
 				Ω(cachingInfo).Should(BeZero())
@@ -274,11 +277,65 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{})
+				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
 				Ω(err).Should(HaveOccurred())
 				Ω(downloadedFile).Should(BeEmpty())
 				Ω(cachingInfo).Should(BeZero())
 			})
+		})
+
+		Context("when cancelling", func() {
+			var requestInitiated chan struct{}
+			var completeRequest chan struct{}
+
+			BeforeEach(func() {
+				requestInitiated = make(chan struct{})
+				completeRequest = make(chan struct{})
+
+				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					requestInitiated <- struct{}{}
+					<-completeRequest
+					w.Write(bytes.Repeat([]byte("a"), 1024))
+					w.(http.Flusher).Flush()
+					<-completeRequest
+				}))
+
+				serverUrl := testServer.URL + "/somepath"
+				url, _ = url.Parse(serverUrl)
+			})
+
+			It("cancels the request", func() {
+				errs := make(chan error)
+
+				go func() {
+					_, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+					errs <- err
+				}()
+
+				Eventually(requestInitiated).Should(Receive())
+				close(cancelChan)
+
+				Eventually(errs).Should(Receive(Equal(ErrDownloadCancelled)))
+
+				close(completeRequest)
+			})
+
+			It("stops the download", func() {
+				errs := make(chan error)
+
+				go func() {
+					_, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+					errs <- err
+				}()
+
+				Eventually(requestInitiated).Should(Receive())
+				completeRequest <- struct{}{}
+				close(cancelChan)
+
+				Eventually(errs).Should(Receive(Equal(ErrDownloadCancelled)))
+				close(completeRequest)
+			})
+
 		})
 	})
 
@@ -328,120 +385,137 @@ var _ = Describe("Downloader", func() {
 			os.RemoveAll(tempDir)
 		})
 
-		downloadTestFile := func() (path string, cachingInfoOut CachingInfoType, err error) {
+		downloadTestFile := func(cancelChan <-chan struct{}) (path string, cachingInfoOut CachingInfoType, err error) {
 			return downloader.Download(
 				url,
 				func() (*os.File, error) {
 					return ioutil.TempFile(tempDir, "the-file")
 				},
 				CachingInfoType{},
+				cancelChan,
 			)
 		}
 
 		It("only allows n downloads at the same time", func() {
 			go func() {
-				downloadTestFile()
+				downloadTestFile(make(chan struct{}, 0))
 				barrier <- nil
 			}()
 
 			<-barrier
-			downloadTestFile()
+			downloadTestFile(cancelChan)
 			<-barrier
 		})
-	})
 
-	Context("Downloading witbh caching info", func() {
-		var (
-			server     *ghttp.Server
-			cachedInfo CachingInfoType
-			statusCode int
-			url        *Url.URL
-			body       string
-		)
+		Context("when cancelling", func() {
+			It("bails when waiting", func() {
+				go func() {
+					downloadTestFile(make(chan struct{}, 0))
+					barrier <- nil
+				}()
 
-		BeforeEach(func() {
-			cachedInfo = CachingInfoType{
-				ETag:         "It's Just a Flesh Wound",
-				LastModified: "The 60s",
-			}
-
-			server = ghttp.NewServer()
-			server.AppendHandlers(ghttp.CombineHandlers(
-				ghttp.VerifyRequest("GET", "/get-the-file"),
-				ghttp.VerifyHeader(http.Header{
-					"If-None-Match":     []string{cachedInfo.ETag},
-					"If-Modified-Since": []string{cachedInfo.LastModified},
-				}),
-				ghttp.RespondWithPtr(&statusCode, &body),
-			))
-
-			url, _ = Url.Parse(server.URL() + "/get-the-file")
-		})
-
-		AfterEach(func() {
-			server.Close()
-		})
-
-		Context("when the server replies with 304", func() {
-			BeforeEach(func() {
-				statusCode = http.StatusNotModified
-			})
-
-			It("should return that it did not download", func() {
-				downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo)
-				Ω(downloadedFile).Should(BeEmpty())
-				Ω(err).ShouldNot(HaveOccurred())
+				<-barrier
+				cancelChan := make(chan struct{}, 0)
+				close(cancelChan)
+				_, _, err := downloadTestFile(cancelChan)
+				Ω(err).Should(Equal(ErrDownloadCancelled))
+				<-barrier
 			})
 		})
 
-		Context("when the server replies with 200", func() {
+		Context("Downloading with caching info", func() {
 			var (
-				downloadedFile string
-				err            error
+				server     *ghttp.Server
+				cachedInfo CachingInfoType
+				statusCode int
+				url        *Url.URL
+				body       string
 			)
 
 			BeforeEach(func() {
-				statusCode = http.StatusOK
-				body = "quarb!"
+				cachedInfo = CachingInfoType{
+					ETag:         "It's Just a Flesh Wound",
+					LastModified: "The 60s",
+				}
+
+				server = ghttp.NewServer()
+				server.AppendHandlers(ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/get-the-file"),
+					ghttp.VerifyHeader(http.Header{
+						"If-None-Match":     []string{cachedInfo.ETag},
+						"If-Modified-Since": []string{cachedInfo.LastModified},
+					}),
+					ghttp.RespondWithPtr(&statusCode, &body),
+				))
+
+				url, _ = Url.Parse(server.URL() + "/get-the-file")
 			})
 
 			AfterEach(func() {
-				if downloadedFile != "" {
-					os.Remove(downloadedFile)
-				}
+				server.Close()
 			})
 
-			It("should download the file", func() {
-				downloadedFile, _, err = downloader.Download(url, createDestFile, cachedInfo)
-				Ω(err).ShouldNot(HaveOccurred())
+			Context("when the server replies with 304", func() {
+				BeforeEach(func() {
+					statusCode = http.StatusNotModified
+				})
 
-				info, err := os.Stat(downloadedFile)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(info.Size()).Should(Equal(int64(len(body))))
-			})
-		})
-
-		Context("for anything else (including a server error)", func() {
-			BeforeEach(func() {
-				statusCode = http.StatusInternalServerError
-
-				// cope with built in retry
-				for i := 0; i < MAX_DOWNLOAD_ATTEMPTS; i++ {
-					server.AppendHandlers(ghttp.CombineHandlers(
-						ghttp.VerifyRequest("GET", "/get-the-file"),
-						ghttp.VerifyHeader(http.Header{
-							"If-None-Match":     []string{cachedInfo.ETag},
-							"If-Modified-Since": []string{cachedInfo.LastModified},
-						}),
-						ghttp.RespondWithPtr(&statusCode, &body),
-					))
-				}
+				It("should return that it did not download", func() {
+					downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo, cancelChan)
+					Ω(downloadedFile).Should(BeEmpty())
+					Ω(err).ShouldNot(HaveOccurred())
+				})
 			})
 
-			It("should return false with an error", func() {
-				downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo)
-				Ω(downloadedFile).Should(BeEmpty())
-				Ω(err).Should(HaveOccurred())
+			Context("when the server replies with 200", func() {
+				var (
+					downloadedFile string
+					err            error
+				)
+
+				BeforeEach(func() {
+					statusCode = http.StatusOK
+					body = "quarb!"
+				})
+
+				AfterEach(func() {
+					if downloadedFile != "" {
+						os.Remove(downloadedFile)
+					}
+				})
+
+				It("should download the file", func() {
+					downloadedFile, _, err = downloader.Download(url, createDestFile, cachedInfo, cancelChan)
+					Ω(err).ShouldNot(HaveOccurred())
+
+					info, err := os.Stat(downloadedFile)
+					Ω(err).ShouldNot(HaveOccurred())
+					Ω(info.Size()).Should(Equal(int64(len(body))))
+				})
+			})
+
+			Context("for anything else (including a server error)", func() {
+				BeforeEach(func() {
+					statusCode = http.StatusInternalServerError
+
+					// cope with built in retry
+					for i := 0; i < MAX_DOWNLOAD_ATTEMPTS; i++ {
+						server.AppendHandlers(ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/get-the-file"),
+							ghttp.VerifyHeader(http.Header{
+								"If-None-Match":     []string{cachedInfo.ETag},
+								"If-Modified-Since": []string{cachedInfo.LastModified},
+							}),
+							ghttp.RespondWithPtr(&statusCode, &body),
+						))
+					}
+				})
+
+				It("should return false with an error", func() {
+					downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo, cancelChan)
+					Ω(downloadedFile).Should(BeEmpty())
+					Ω(err).Should(HaveOccurred())
+				})
 			})
 		})
 	})
