@@ -10,12 +10,13 @@ import (
 )
 
 type FakeCachedDownloader struct {
-	FetchStub        func(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer) (io.ReadCloser, error)
+	FetchStub        func(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, error)
 	fetchMutex       sync.RWMutex
 	fetchArgsForCall []struct {
 		urlToFetch  *url.URL
 		cacheKey    string
 		transformer cacheddownloader.CacheTransformer
+		cancelChan  <-chan struct{}
 	}
 	fetchReturns struct {
 		result1 io.ReadCloser
@@ -23,16 +24,17 @@ type FakeCachedDownloader struct {
 	}
 }
 
-func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer) (io.ReadCloser, error) {
+func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, error) {
 	fake.fetchMutex.Lock()
 	fake.fetchArgsForCall = append(fake.fetchArgsForCall, struct {
 		urlToFetch  *url.URL
 		cacheKey    string
 		transformer cacheddownloader.CacheTransformer
-	}{urlToFetch, cacheKey, transformer})
+		cancelChan  <-chan struct{}
+	}{urlToFetch, cacheKey, transformer, cancelChan})
 	fake.fetchMutex.Unlock()
 	if fake.FetchStub != nil {
-		return fake.FetchStub(urlToFetch, cacheKey, transformer)
+		return fake.FetchStub(urlToFetch, cacheKey, transformer, cancelChan)
 	} else {
 		return fake.fetchReturns.result1, fake.fetchReturns.result2
 	}
@@ -44,10 +46,10 @@ func (fake *FakeCachedDownloader) FetchCallCount() int {
 	return len(fake.fetchArgsForCall)
 }
 
-func (fake *FakeCachedDownloader) FetchArgsForCall(i int) (*url.URL, string, cacheddownloader.CacheTransformer) {
+func (fake *FakeCachedDownloader) FetchArgsForCall(i int) (*url.URL, string, cacheddownloader.CacheTransformer, <-chan struct{}) {
 	fake.fetchMutex.RLock()
 	defer fake.fetchMutex.RUnlock()
-	return fake.fetchArgsForCall[i].urlToFetch, fake.fetchArgsForCall[i].cacheKey, fake.fetchArgsForCall[i].transformer
+	return fake.fetchArgsForCall[i].urlToFetch, fake.fetchArgsForCall[i].cacheKey, fake.fetchArgsForCall[i].transformer, fake.fetchArgsForCall[i].cancelChan
 }
 
 func (fake *FakeCachedDownloader) FetchReturns(result1 io.ReadCloser, result2 error) {
