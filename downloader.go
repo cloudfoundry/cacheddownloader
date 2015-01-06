@@ -37,10 +37,11 @@ func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVer
 			InsecureSkipVerify: skipSSLVerification,
 			MinVersion:         tls.VersionTLS10,
 		},
-		ResponseHeaderTimeout: timeout,
 	}
+
 	client := &http.Client{
 		Transport: transport,
+		Timeout:   timeout,
 	}
 
 	return &Downloader{
