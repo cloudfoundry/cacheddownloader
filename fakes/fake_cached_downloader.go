@@ -10,7 +10,7 @@ import (
 )
 
 type FakeCachedDownloader struct {
-	FetchStub        func(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, error)
+	FetchStub        func(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, int64, error)
 	fetchMutex       sync.RWMutex
 	fetchArgsForCall []struct {
 		urlToFetch  *url.URL
@@ -20,11 +20,12 @@ type FakeCachedDownloader struct {
 	}
 	fetchReturns struct {
 		result1 io.ReadCloser
-		result2 error
+		result2 int64
+		result3 error
 	}
 }
 
-func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, error) {
+func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, int64, error) {
 	fake.fetchMutex.Lock()
 	fake.fetchArgsForCall = append(fake.fetchArgsForCall, struct {
 		urlToFetch  *url.URL
@@ -36,7 +37,7 @@ func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, tr
 	if fake.FetchStub != nil {
 		return fake.FetchStub(urlToFetch, cacheKey, transformer, cancelChan)
 	} else {
-		return fake.fetchReturns.result1, fake.fetchReturns.result2
+		return fake.fetchReturns.result1, fake.fetchReturns.result2, fake.fetchReturns.result3
 	}
 }
 
@@ -52,12 +53,13 @@ func (fake *FakeCachedDownloader) FetchArgsForCall(i int) (*url.URL, string, cac
 	return fake.fetchArgsForCall[i].urlToFetch, fake.fetchArgsForCall[i].cacheKey, fake.fetchArgsForCall[i].transformer, fake.fetchArgsForCall[i].cancelChan
 }
 
-func (fake *FakeCachedDownloader) FetchReturns(result1 io.ReadCloser, result2 error) {
+func (fake *FakeCachedDownloader) FetchReturns(result1 io.ReadCloser, result2 int64, result3 error) {
 	fake.FetchStub = nil
 	fake.fetchReturns = struct {
 		result1 io.ReadCloser
-		result2 error
-	}{result1, result2}
+		result2 int64
+		result3 error
+	}{result1, result2, result3}
 }
 
 var _ cacheddownloader.CachedDownloader = new(FakeCachedDownloader)
