@@ -136,6 +136,11 @@ func transformZipToTar(path, destPath string) (int64, error) {
 		return 0, err
 	}
 
+	err = zr.Close()
+	if err != nil {
+		return 0, err
+	}
+
 	err = os.Remove(path)
 	if err != nil {
 		return 0, err
