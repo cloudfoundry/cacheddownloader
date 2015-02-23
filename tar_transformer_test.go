@@ -26,6 +26,8 @@ var _ = Describe("TarTransformer", func() {
 
 	archiveFiles := []test_helper.ArchiveFile{
 		{Name: "some-file", Body: "some-contents"},
+		{Name: "some-symlink", Link: "some-symlink-target"},
+		{Name: "some-symlink-target", Body: "some-other-contents"},
 	}
 
 	verifyTarFile := func(path string) {

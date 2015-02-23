@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 )
@@ -147,6 +148,14 @@ func transformZipToTar(path, destPath string) (int64, error) {
 func writeZipEntryToTar(tarWriter *tar.Writer, zipEntry *zip.File) error {
 	zipInfo := zipEntry.FileInfo()
 
+	if zipInfo.Mode()&os.ModeSymlink == os.ModeSymlink {
+		return writeSymlinkZipEntryToTar(tarWriter, zipEntry, zipInfo)
+	} else {
+		return writeRegularZipEntryToTar(tarWriter, zipEntry, zipInfo)
+	}
+}
+
+func writeRegularZipEntryToTar(tarWriter *tar.Writer, zipEntry *zip.File, zipInfo os.FileInfo) error {
 	tarHeader, err := tar.FileInfoHeader(zipInfo, "")
 	if err != nil {
 		return err
@@ -168,6 +177,40 @@ func writeZipEntryToTar(tarWriter *tar.Writer, zipEntry *zip.File) error {
 	}
 
 	_, err = io.Copy(tarWriter, zipReader)
+	if err != nil {
+		return err
+	}
+
+	err = tarWriter.Flush()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func writeSymlinkZipEntryToTar(tarWriter *tar.Writer, zipEntry *zip.File, zipInfo os.FileInfo) error {
+	zipReader, err := zipEntry.Open()
+	if err != nil {
+		return err
+	}
+
+	defer zipReader.Close()
+	payload, err := ioutil.ReadAll(zipReader)
+	if err != nil {
+		return err
+	}
+	link := string(payload)
+
+	tarHeader, err := tar.FileInfoHeader(zipInfo, link)
+	if err != nil {
+		return err
+	}
+
+	// file info only populates the base name; we want the full path
+	tarHeader.Name = zipEntry.FileHeader.Name
+
+	err = tarWriter.WriteHeader(tarHeader)
 	if err != nil {
 		return err
 	}
