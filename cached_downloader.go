@@ -23,7 +23,7 @@ type CachedDownloader interface {
 }
 
 func NoopTransform(source, destination string) (int64, error) {
-	err := os.Rename(source, destination)
+	err := replace(source, destination)
 	if err != nil {
 		return 0, err
 	}

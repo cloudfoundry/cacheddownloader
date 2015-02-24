@@ -105,7 +105,7 @@ func (c *FileCache) Add(cacheKey string, sourcePath string, size int64, cachingI
 	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.seq)
 	cachePath := filepath.Join(c.cachedPath, uniqueName)
 
-	err := os.Rename(sourcePath, cachePath)
+	err := replace(sourcePath, cachePath)
 	if err != nil {
 		return nil, err
 	}
