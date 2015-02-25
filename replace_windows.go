@@ -5,6 +5,10 @@ import (
 	"unsafe"
 )
 
+// Replaces `dst' with `src' atomically. Under linux we only have to
+// call os.Rename(), on windows os.Rename() will error if the
+// destination exists already. The replace function serves as a
+// unified interface on both platforms.
 func replace(src, dst string) error {
 	kernel32, err := syscall.LoadLibrary("kernel32.dll")
 	if err != nil {

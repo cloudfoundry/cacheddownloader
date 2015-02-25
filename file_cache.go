@@ -80,7 +80,7 @@ func (e *fileCacheEntry) readCloser() (*CachedFile, error) {
 	return readCloser, nil
 }
 
-func (c *FileCache) Add(cacheKey string, sourcePath string, size int64, cachingInfo CachingInfoType) (*CachedFile, error) {
+func (c *FileCache) Add(cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (*CachedFile, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
