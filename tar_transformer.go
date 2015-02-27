@@ -111,6 +111,7 @@ func transformZipToTar(path, destPath string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer dest.Close()
 
 	zr, err := zip.OpenReader(path)
 	if err != nil {
@@ -133,6 +134,11 @@ func transformZipToTar(path, destPath string) (int64, error) {
 	}
 
 	fi, err := dest.Stat()
+	if err != nil {
+		return 0, err
+	}
+
+	err = zr.Close()
 	if err != nil {
 		return 0, err
 	}

@@ -472,6 +472,9 @@ var _ = Describe("File cache", func() {
 					))
 
 					url, _ = Url.Parse(server.URL() + "/A")
+					// windows timer increments every 15.6ms, without the sleep
+					// A, B & C will sometimes have the same timestamp
+					time.Sleep(16 * time.Millisecond)
 					cache.Fetch(url, "A", NoopTransform, cancelChan)
 				})
 
