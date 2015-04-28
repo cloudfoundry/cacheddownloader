@@ -40,10 +40,10 @@ var _ = Describe("File cache", func() {
 	BeforeEach(func() {
 		var err error
 		cachedPath, err = ioutil.TempDir("", "test_file_cached")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		uncachedPath, err = ioutil.TempDir("", "test_file_uncached")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		maxSizeInBytes = 1024
 
@@ -53,7 +53,7 @@ var _ = Describe("File cache", func() {
 		server = ghttp.NewServer()
 
 		url, err = Url.Parse(server.URL() + "/my_file")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		cancelChan = make(chan struct{})
 	})
@@ -74,7 +74,7 @@ var _ = Describe("File cache", func() {
 			os.RemoveAll(cachedPath)
 			cache = New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS, false)
 			_, err := os.Stat(cachedPath)
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
@@ -84,7 +84,7 @@ var _ = Describe("File cache", func() {
 			ioutil.WriteFile(filename, []byte("leftovers"), 0666)
 			cache = New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS, false)
 			_, err := os.Stat(filename)
-			Ω(err).Should(HaveOccurred())
+			Expect(err).To(HaveOccurred())
 		})
 	})
 
@@ -104,20 +104,20 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("should not error", func() {
-				Ω(err).ShouldNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("should return a readCloser that streams the file", func() {
-				Ω(file).ShouldNot(BeNil())
-				Ω(fileSize).Should(BeNumerically("==", 3))
-				Ω(ioutil.ReadAll(file)).Should(Equal(downloadContent))
+				Expect(file).NotTo(BeNil())
+				Expect(fileSize).To(BeNumerically("==", 3))
+				Expect(ioutil.ReadAll(file)).To(Equal(downloadContent))
 			})
 
 			It("should delete the file when we close the readCloser", func() {
 				err := file.Close()
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
-				Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
 			})
 		})
 
@@ -128,14 +128,14 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("should return an error and no file", func() {
-				Ω(file).Should(BeNil())
-				Ω(fileSize).Should(BeNumerically("==", 0))
-				Ω(err).Should(HaveOccurred())
+				Expect(file).To(BeNil())
+				Expect(fileSize).To(BeNumerically("==", 0))
+				Expect(err).To(HaveOccurred())
 			})
 
 			It("should clean up after itself", func() {
-				Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
-				Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
+				Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
 			})
 		})
 	})
@@ -173,46 +173,46 @@ var _ = Describe("File cache", func() {
 					server.AppendHandlers(ghttp.CombineHandlers(
 						ghttp.VerifyRequest("GET", "/my_file"),
 						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-							Ω(req.Header.Get("If-None-Match")).Should(BeEmpty())
+							Expect(req.Header.Get("If-None-Match")).To(BeEmpty())
 						}),
 						ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 					))
 				})
 
 				It("should not error", func() {
-					Ω(fetchErr).ShouldNot(HaveOccurred())
+					Expect(fetchErr).NotTo(HaveOccurred())
 				})
 
 				It("should return a readCloser that streams the file", func() {
-					Ω(fetchedFile).ShouldNot(BeNil())
-					Ω(fetchedFileSize).Should(BeNumerically("==", maxSizeInBytes/2))
-					Ω(ioutil.ReadAll(fetchedFile)).Should(Equal(downloadContent))
+					Expect(fetchedFile).NotTo(BeNil())
+					Expect(fetchedFileSize).To(BeNumerically("==", maxSizeInBytes/2))
+					Expect(ioutil.ReadAll(fetchedFile)).To(Equal(downloadContent))
 				})
 
 				It("should return a file within the cache", func() {
-					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(1))
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(1))
 				})
 
 				It("should remove any temporary assets generated along the way", func() {
-					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
+					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 
 				Describe("downloading with a transformer", func() {
 					BeforeEach(func() {
 						transformer = func(source string, destination string) (int64, error) {
 							err := ioutil.WriteFile(destination, []byte("hello tmp"), 0644)
-							Ω(err).ShouldNot(HaveOccurred())
+							Expect(err).NotTo(HaveOccurred())
 
 							return 100, err
 						}
 					})
 
 					It("passes the download through the transformer", func() {
-						Ω(fetchErr).ShouldNot(HaveOccurred())
+						Expect(fetchErr).NotTo(HaveOccurred())
 
 						content, err := ioutil.ReadAll(fetchedFile)
-						Ω(err).ShouldNot(HaveOccurred())
-						Ω(string(content)).Should(Equal("hello tmp"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(content)).To(Equal("hello tmp"))
 					})
 				})
 			})
@@ -223,25 +223,25 @@ var _ = Describe("File cache", func() {
 					server.AppendHandlers(ghttp.CombineHandlers(
 						ghttp.VerifyRequest("GET", "/my_file"),
 						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-							Ω(req.Header.Get("If-None-Match")).Should(BeEmpty())
+							Expect(req.Header.Get("If-None-Match")).To(BeEmpty())
 						}),
 						ghttp.RespondWith(http.StatusOK, string(downloadContent)),
 					))
 				})
 
 				It("should not error", func() {
-					Ω(fetchErr).ShouldNot(HaveOccurred())
+					Expect(fetchErr).NotTo(HaveOccurred())
 				})
 
 				It("should return a readCloser that streams the file", func() {
-					Ω(fetchedFile).ShouldNot(BeNil())
-					Ω(ioutil.ReadAll(fetchedFile)).Should(Equal(downloadContent))
+					Expect(fetchedFile).NotTo(BeNil())
+					Expect(ioutil.ReadAll(fetchedFile)).To(Equal(downloadContent))
 				})
 
 				It("should not store the file", func() {
 					fetchedFile.Close()
-					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
-					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
+					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 			})
 
@@ -251,13 +251,13 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should return an error and no file", func() {
-					Ω(fetchedFile).Should(BeNil())
-					Ω(fetchErr).Should(HaveOccurred())
+					Expect(fetchedFile).To(BeNil())
+					Expect(fetchErr).To(HaveOccurred())
 				})
 
 				It("should clean up after itself", func() {
-					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
-					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
+					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 			})
 		})
@@ -278,7 +278,7 @@ var _ = Describe("File cache", func() {
 
 				f, s, _ := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 				defer f.Close()
-				Ω(s).Should(BeNumerically("==", len(fileContent)))
+				Expect(s).To(BeNumerically("==", len(fileContent)))
 
 				downloadContent = "now you don't"
 
@@ -288,7 +288,7 @@ var _ = Describe("File cache", func() {
 				server.AppendHandlers(ghttp.CombineHandlers(
 					ghttp.VerifyRequest("GET", "/my_file"),
 					http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-						Ω(req.Header.Get("If-None-Match")).Should(Equal("my-original-etag"))
+						Expect(req.Header.Get("If-None-Match")).To(Equal("my-original-etag"))
 					}),
 					ghttp.RespondWithPtr(&status, &downloadContent, returnedHeader),
 				))
@@ -296,7 +296,7 @@ var _ = Describe("File cache", func() {
 
 			It("should perform the request with the correct modified headers", func() {
 				cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
-				Ω(server.ReceivedRequests()).Should(HaveLen(2))
+				Expect(server.ReceivedRequests()).To(HaveLen(2))
 			})
 
 			Context("if the file has been modified", func() {
@@ -309,23 +309,23 @@ var _ = Describe("File cache", func() {
 					defer f.Close()
 
 					paths, _ := filepath.Glob(cacheFilePath + "*")
-					Ω(ioutil.ReadFile(paths[0])).Should(Equal([]byte(downloadContent)))
+					Expect(ioutil.ReadFile(paths[0])).To(Equal([]byte(downloadContent)))
 				})
 
 				It("should return a readcloser pointing to the file", func() {
 					file, fileSize, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(ioutil.ReadAll(file)).Should(Equal([]byte(downloadContent)))
-					Ω(fileSize).Should(BeNumerically("==", len(downloadContent)))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ioutil.ReadAll(file)).To(Equal([]byte(downloadContent)))
+					Expect(fileSize).To(BeNumerically("==", len(downloadContent)))
 				})
 
 				It("should have put the file in the cache", func() {
 					f, s, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					f.Close()
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(1))
-					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
-					Ω(s).Should(BeNumerically("==", len(downloadContent)))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(1))
+					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					Expect(s).To(BeNumerically("==", len(downloadContent)))
 				})
 			})
 
@@ -337,18 +337,18 @@ var _ = Describe("File cache", func() {
 
 				It("should return a readcloser pointing to the file", func() {
 					file, fileSize, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(ioutil.ReadAll(file)).Should(Equal([]byte(downloadContent)))
-					Ω(fileSize).Should(BeNumerically("==", len(downloadContent)))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ioutil.ReadAll(file)).To(Equal([]byte(downloadContent)))
+					Expect(fileSize).To(BeNumerically("==", len(downloadContent)))
 				})
 
 				It("should have removed the file from the cache", func() {
 					f, s, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
 					f.Close()
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
-					Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
-					Ω(s).Should(BeNumerically("==", len(downloadContent)))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
+					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					Expect(s).To(BeNumerically("==", len(downloadContent)))
 				})
 			})
 
@@ -359,18 +359,18 @@ var _ = Describe("File cache", func() {
 
 				It("should not redownload the file", func() {
 					f, s, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
-					Ω(err).ShouldNot(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred())
 					defer f.Close()
 
 					paths, _ := filepath.Glob(cacheFilePath + "*")
-					Ω(ioutil.ReadFile(paths[0])).Should(Equal(fileContent))
-					Ω(s).Should(BeZero())
+					Expect(ioutil.ReadFile(paths[0])).To(Equal(fileContent))
+					Expect(s).To(BeZero())
 				})
 
 				It("should return a readcloser pointing to the file", func() {
 					file, _, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(ioutil.ReadAll(file)).Should(Equal(fileContent))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ioutil.ReadAll(file)).To(Equal(fileContent))
 				})
 			})
 		})
@@ -388,31 +388,31 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("should not error", func() {
-				Ω(err).ShouldNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("should return a readCloser that streams the file", func() {
-				Ω(file).ShouldNot(BeNil())
-				Ω(ioutil.ReadAll(file)).Should(Equal(downloadContent))
-				Ω(fileSize).Should(BeNumerically("==", maxSizeInBytes*3))
+				Expect(file).NotTo(BeNil())
+				Expect(ioutil.ReadAll(file)).To(Equal(downloadContent))
+				Expect(fileSize).To(BeNumerically("==", maxSizeInBytes*3))
 			})
 
 			It("should put the file in the uncached path, then delete it", func() {
 				err := file.Close()
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(0))
-				Ω(ioutil.ReadDir(uncachedPath)).Should(HaveLen(0))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
+				Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 			})
 
 			Context("when the file is downloaded the second time", func() {
 				BeforeEach(func() {
 					err = file.Close()
-					Ω(err).ShouldNot(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred())
 
 					server.AppendHandlers(ghttp.CombineHandlers(
 						ghttp.VerifyRequest("GET", "/my_file"),
 						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-							Ω(req.Header.Get("If-None-Match")).Should(BeEmpty())
+							Expect(req.Header.Get("If-None-Match")).To(BeEmpty())
 						}),
 						ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 					))
@@ -421,12 +421,12 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should not error", func() {
-					Ω(err).ShouldNot(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				It("should return a readCloser that streams the file", func() {
-					Ω(file).ShouldNot(BeNil())
-					Ω(ioutil.ReadAll(file)).Should(Equal(downloadContent))
+					Expect(file).NotTo(BeNil())
+					Expect(ioutil.ReadAll(file)).To(Equal(downloadContent))
 				})
 			})
 		})
@@ -441,8 +441,8 @@ var _ = Describe("File cache", func() {
 				))
 
 				cachedFile, _, err := cache.Fetch(url, name, NoopTransform, cancelChan)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(ioutil.ReadAll(cachedFile)).Should(Equal(downloadContent))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ioutil.ReadAll(cachedFile)).To(Equal(downloadContent))
 				cachedFile.Close()
 			}
 
@@ -456,12 +456,12 @@ var _ = Describe("File cache", func() {
 				//try to add a file that has size larger
 				fetchFileOfSize("D", int(maxSizeInBytes/2)+1)
 
-				Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(2))
+				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
 
-				Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).Should(HaveLen(0))
-				Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).Should(HaveLen(0))
-				Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).Should(HaveLen(1))
-				Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).Should(HaveLen(1))
+				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(0))
+				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).To(HaveLen(0))
+				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).To(HaveLen(1))
+				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(1))
 			})
 
 			Describe("when one of the files has just been read", func() {
@@ -482,12 +482,12 @@ var _ = Describe("File cache", func() {
 					//try to add a file that has size larger
 					fetchFileOfSize("D", int(maxSizeInBytes/2)+1)
 
-					Ω(ioutil.ReadDir(cachedPath)).Should(HaveLen(2))
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
 
-					Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).Should(HaveLen(1))
-					Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).Should(HaveLen(0))
-					Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).Should(HaveLen(0))
-					Ω(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).Should(HaveLen(1))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(1))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).To(HaveLen(0))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).To(HaveLen(0))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(1))
 				})
 			})
 		})
@@ -566,7 +566,7 @@ var _ = Describe("File cache", func() {
 				close(cancelChan)
 
 				_, _, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
-				Ω(err).Should(Equal(ErrDownloadCancelled))
+				Expect(err).To(Equal(ErrDownloadCancelled))
 
 				close(completeRequest)
 				Eventually(errs).Should(Receive(BeNil()))

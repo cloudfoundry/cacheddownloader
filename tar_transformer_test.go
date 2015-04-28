@@ -32,35 +32,35 @@ var _ = Describe("TarTransformer", func() {
 
 	verifyTarFile := func(path string) {
 		file, err := os.Open(path)
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		tr := tar.NewReader(file)
 
 		entry, err := tr.Next()
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
-		Ω(entry.Name).Should(Equal("some-file"))
-		Ω(entry.Size).Should(Equal(int64(len("some-contents"))))
+		Expect(entry.Name).To(Equal("some-file"))
+		Expect(entry.Size).To(Equal(int64(len("some-contents"))))
 	}
 
 	BeforeEach(func() {
 		var err error
 
 		scratch, err = ioutil.TempDir("", "tar-transformer-scratch")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		destinationFile, err := ioutil.TempFile("", "destination")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		err = destinationFile.Close()
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		destinationPath = destinationFile.Name()
 	})
 
 	AfterEach(func() {
 		err := os.RemoveAll(scratch)
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	JustBeforeEach(func() {
@@ -80,14 +80,14 @@ var _ = Describe("TarTransformer", func() {
 
 		It("removes the source file", func() {
 			_, err := os.Stat(sourcePath)
-			Ω(err).Should(HaveOccurred())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("returns its size", func() {
 			fi, err := os.Stat(destinationPath)
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
-			Ω(transformedSize).Should(Equal(fi.Size()))
+			Expect(transformedSize).To(Equal(fi.Size()))
 		})
 	})
 
@@ -99,7 +99,7 @@ var _ = Describe("TarTransformer", func() {
 		})
 
 		It("does not error", func() {
-			Ω(transformErr).ShouldNot(HaveOccurred())
+			Expect(transformErr).NotTo(HaveOccurred())
 		})
 
 		It("gzip uncompresses it to a .tar", func() {
@@ -108,14 +108,14 @@ var _ = Describe("TarTransformer", func() {
 
 		It("deletes the original file", func() {
 			_, err := os.Stat(sourcePath)
-			Ω(err).Should(HaveOccurred())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("returns the correct number of bytes written", func() {
 			fi, err := os.Stat(destinationPath)
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
-			Ω(fi.Size()).Should(Equal(transformedSize))
+			Expect(fi.Size()).To(Equal(transformedSize))
 		})
 	})
 
@@ -127,7 +127,7 @@ var _ = Describe("TarTransformer", func() {
 		})
 
 		It("does not error", func() {
-			Ω(transformErr).ShouldNot(HaveOccurred())
+			Expect(transformErr).NotTo(HaveOccurred())
 		})
 
 		It("transforms it to a .tar", func() {
@@ -136,14 +136,14 @@ var _ = Describe("TarTransformer", func() {
 
 		It("deletes the original file", func() {
 			_, err := os.Stat(sourcePath)
-			Ω(err).Should(HaveOccurred())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("returns the correct number of bytes written", func() {
 			fi, err := os.Stat(destinationPath)
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
-			Ω(fi.Size()).Should(Equal(transformedSize))
+			Expect(fi.Size()).To(Equal(transformedSize))
 		})
 	})
 
@@ -152,11 +152,11 @@ var _ = Describe("TarTransformer", func() {
 			sourcePath = filepath.Join(scratch, "bogus")
 
 			err := ioutil.WriteFile(sourcePath, []byte("bogus"), 0755)
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("blows up horribly", func() {
-			Ω(transformErr).Should(Equal(ErrUnknownArchiveFormat))
+			Expect(transformErr).To(Equal(ErrUnknownArchiveFormat))
 		})
 	})
 })

@@ -31,19 +31,19 @@ var _ = Describe("Integration", func() {
 		var err error
 
 		serverPath, err = ioutil.TempDir("", "cached_downloader_integration_server")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		cachedPath, err = ioutil.TempDir("", "cached_downloader_integration_cache")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		uncachedPath, err = ioutil.TempDir("", "cached_downloader_integration_uncached")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		handler := http.FileServer(http.Dir(serverPath))
 		server = httptest.NewServer(handler)
 
 		url, err = url.Parse(server.URL + "/file")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterEach(func() {
@@ -55,23 +55,23 @@ var _ = Describe("Integration", func() {
 
 	fetch := func() ([]byte, time.Time) {
 		url, err := url.Parse(server.URL + "/file")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		reader, _, err := downloader.Fetch(url, "the-cache-key", cacheddownloader.NoopTransform, make(chan struct{}))
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 		defer reader.Close()
 
 		readData, err := ioutil.ReadAll(reader)
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		cacheContents, err := ioutil.ReadDir(cachedPath)
-		Ω(cacheContents).Should(HaveLen(1))
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(cacheContents).To(HaveLen(1))
+		Expect(err).NotTo(HaveOccurred())
 
 		content, err := ioutil.ReadFile(filepath.Join(cachedPath, cacheContents[0].Name()))
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
-		Ω(readData).Should(Equal(content))
+		Expect(readData).To(Equal(content))
 
 		return content, cacheContents[0].ModTime()
 	}
@@ -82,30 +82,30 @@ var _ = Describe("Integration", func() {
 
 			// touch a file on disk
 			err := ioutil.WriteFile(filepath.Join(serverPath, "file"), []byte("a"), 0666)
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("caches downloads", func() {
 			// download file once
 			content, modTimeBefore := fetch()
-			Ω(content).Should(Equal([]byte("a")))
+			Expect(content).To(Equal([]byte("a")))
 
 			time.Sleep(time.Second)
 
 			// download again should be cached
 			content, modTimeAfter := fetch()
-			Ω(content).Should(Equal([]byte("a")))
-			Ω(modTimeBefore).Should(Equal(modTimeAfter))
+			Expect(content).To(Equal([]byte("a")))
+			Expect(modTimeBefore).To(Equal(modTimeAfter))
 
 			time.Sleep(time.Second)
 
 			// touch file again
 			err := ioutil.WriteFile(filepath.Join(serverPath, "file"), []byte("b"), 0666)
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			// download again and we should get a file containing "b"
 			content, _ = fetch()
-			Ω(content).Should(Equal([]byte("b")))
+			Expect(content).To(Equal([]byte("b")))
 		})
 	})
 })

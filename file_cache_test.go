@@ -19,7 +19,7 @@ var _ = Describe("FileCache", func() {
 
 	BeforeEach(func() {
 		cacheDir, err = ioutil.TempDir("", "cache-test")
-		Ω(err).ShouldNot(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		cache = NewCache(cacheDir, 123424)
 
@@ -46,29 +46,29 @@ var _ = Describe("FileCache", func() {
 		It("fails if room cannot be allocated", func() {
 			var err error
 			readCloser, err = cache.Add(cacheKey, sourceFile.Name(), 250000, cacheInfo)
-			Ω(err).Should(Equal(NotEnoughSpace))
-			Ω(readCloser).Should(BeNil())
+			Expect(err).To(Equal(NotEnoughSpace))
+			Expect(readCloser).To(BeNil())
 		})
 
 		Context("when closed is called", func() {
 			JustBeforeEach(func() {
 				var err error
 				readCloser, err = cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(readCloser).ShouldNot(BeNil())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(readCloser).NotTo(BeNil())
 			})
 
 			Context("once", func() {
 				It("succeeds and has 1 file in the cache", func() {
-					Ω(readCloser.Close()).ShouldNot(HaveOccurred())
-					Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+					Expect(readCloser.Close()).NotTo(HaveOccurred())
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 				})
 			})
 
 			Context("more than once", func() {
 				It("fails", func() {
-					Ω(readCloser.Close()).ShouldNot(HaveOccurred())
-					Ω(readCloser.Close()).Should(HaveOccurred())
+					Expect(readCloser.Close()).NotTo(HaveOccurred())
+					Expect(readCloser.Close()).To(HaveOccurred())
 				})
 			})
 		})
@@ -77,8 +77,8 @@ var _ = Describe("FileCache", func() {
 			JustBeforeEach(func() {
 				var err error
 				readCloser, err = cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(readCloser).ShouldNot(BeNil())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(readCloser).NotTo(BeNil())
 			})
 
 			AfterEach(func() {
@@ -87,12 +87,12 @@ var _ = Describe("FileCache", func() {
 
 			It("returns a reader", func() {
 				content, err := ioutil.ReadAll(readCloser)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(string(content)).Should(Equal("the-file-content"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(content)).To(Equal("the-file-content"))
 			})
 
 			It("has 1 file in the cache", func() {
-				Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+				Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 			})
 		})
 
@@ -110,8 +110,8 @@ var _ = Describe("FileCache", func() {
 
 			JustBeforeEach(func() {
 				readCloser, err = cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(readCloser).ShouldNot(BeNil())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(readCloser).NotTo(BeNil())
 			})
 
 			AfterEach(func() {
@@ -122,8 +122,8 @@ var _ = Describe("FileCache", func() {
 			Context("when adding the same cache key with identical info", func() {
 				It("ignores the add", func() {
 					reader, err := cache.Add(cacheKey, newSourceFile.Name(), fileSize, cacheInfo)
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(reader).ShouldNot(BeNil())
+					Expect(err).NotTo(HaveOccurred())
+					Expect(reader).NotTo(BeNil())
 				})
 			})
 
@@ -131,8 +131,8 @@ var _ = Describe("FileCache", func() {
 				JustBeforeEach(func() {
 					var err error
 					newReader, err = cache.Add(cacheKey, newSourceFile.Name(), newFileSize, newCacheInfo)
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(newReader).ShouldNot(BeNil())
+					Expect(err).NotTo(HaveOccurred())
+					Expect(newReader).NotTo(BeNil())
 				})
 
 				AfterEach(func() {
@@ -146,14 +146,14 @@ var _ = Describe("FileCache", func() {
 
 					It("returns a reader for the new content", func() {
 						content, err := ioutil.ReadAll(newReader)
-						Ω(err).ShouldNot(HaveOccurred())
-						Ω(string(content)).Should(Equal("new-file-content"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(content)).To(Equal("new-file-content"))
 					})
 
 					It("has files in the cache", func() {
-						Ω(filenamesInDir(cacheDir)).Should(HaveLen(2))
-						Ω(readCloser.Close()).ShouldNot(HaveOccurred())
-						Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+						Expect(readCloser.Close()).NotTo(HaveOccurred())
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 					})
 
 				})
@@ -167,20 +167,20 @@ var _ = Describe("FileCache", func() {
 
 					It("returns a reader for the new content", func() {
 						content, err := ioutil.ReadAll(newReader)
-						Ω(err).ShouldNot(HaveOccurred())
-						Ω(string(content)).Should(Equal("new-file-content"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(content)).To(Equal("new-file-content"))
 					})
 
 					It("has files in the cache", func() {
-						Ω(filenamesInDir(cacheDir)).Should(HaveLen(2))
-						Ω(readCloser.Close()).ShouldNot(HaveOccurred())
-						Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+						Expect(readCloser.Close()).NotTo(HaveOccurred())
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 					})
 
 					It("still allows the previous reader to read", func() {
 						content, err := ioutil.ReadAll(readCloser)
-						Ω(err).ShouldNot(HaveOccurred())
-						Ω(string(content)).Should(Equal("the-file-content"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(content)).To(Equal("the-file-content"))
 					})
 				})
 			})
@@ -201,9 +201,9 @@ var _ = Describe("FileCache", func() {
 		Context("when there is nothing", func() {
 			It("returns nothing", func() {
 				reader, ci, err := cache.Get(cacheKey)
-				Ω(err).Should(Equal(EntryNotFound))
-				Ω(reader).Should(BeNil())
-				Ω(ci).Should(Equal(cacheInfo))
+				Expect(err).To(Equal(EntryNotFound))
+				Expect(reader).To(BeNil())
+				Expect(ci).To(Equal(cacheInfo))
 			})
 		})
 
@@ -211,19 +211,19 @@ var _ = Describe("FileCache", func() {
 			BeforeEach(func() {
 				cacheInfo.LastModified = "1234"
 				reader, err := cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
-				Ω(err).ShouldNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 				reader.Close()
 			})
 
 			It("returns a reader for the item", func() {
 				reader, ci, err := cache.Get(cacheKey)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(reader).ShouldNot(BeNil())
-				Ω(ci).Should(Equal(cacheInfo))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reader).NotTo(BeNil())
+				Expect(ci).To(Equal(cacheInfo))
 
 				content, err := ioutil.ReadAll(reader)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(string(content)).Should(Equal("the-file-content"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(content)).To(Equal("the-file-content"))
 			})
 
 			Context("when the item is replaced", func() {
@@ -234,7 +234,7 @@ var _ = Describe("FileCache", func() {
 
 					cacheInfo.LastModified = "123"
 					reader, err := cache.Add(cacheKey, newSourceFile.Name(), fileSize, cacheInfo)
-					Ω(err).ShouldNot(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred())
 					reader.Close()
 				})
 
@@ -244,13 +244,13 @@ var _ = Describe("FileCache", func() {
 
 				It("gets the new item", func() {
 					reader, ci, err := cache.Get(cacheKey)
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(reader).ShouldNot(BeNil())
-					Ω(ci).Should(Equal(cacheInfo))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(reader).NotTo(BeNil())
+					Expect(ci).To(Equal(cacheInfo))
 
 					content, err := ioutil.ReadAll(reader)
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(string(content)).Should(Equal("new-file-content"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(content)).To(Equal("new-file-content"))
 				})
 
 				Context("when a get is issued before a replace", func() {
@@ -258,15 +258,15 @@ var _ = Describe("FileCache", func() {
 					BeforeEach(func() {
 						var err error
 						reader, _, err = cache.Get(cacheKey)
-						Ω(err).ShouldNot(HaveOccurred())
-						Ω(reader).ShouldNot(BeNil())
+						Expect(err).NotTo(HaveOccurred())
+						Expect(reader).NotTo(BeNil())
 
-						Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 					})
 
 					It("the old file is removed when closed", func() {
 						reader.Close()
-						Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 					})
 				})
 			})
@@ -282,36 +282,36 @@ var _ = Describe("FileCache", func() {
 
 			cacheInfo.LastModified = "1234"
 			reader, err := cache.Add(cacheKey, sourceFile.Name(), 100, cacheInfo)
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			reader.Close()
 		})
 
 		Context("when the key does not exist", func() {
 			It("does not fail", func() {
-				Ω(func() { cache.Remove("bogus") }).ShouldNot(Panic())
+				Expect(func() { cache.Remove("bogus") }).NotTo(Panic())
 			})
 		})
 
 		Context("when the key exists", func() {
 			It("removes the file in the cache", func() {
-				Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+				Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 				cache.Remove(cacheKey)
-				Ω(filenamesInDir(cacheDir)).Should(HaveLen(0))
+				Expect(filenamesInDir(cacheDir)).To(HaveLen(0))
 			})
 		})
 
 		Context("when a get is issued first", func() {
 			It("removes the file after a close", func() {
 				reader, _, err := cache.Get(cacheKey)
-				Ω(err).ShouldNot(HaveOccurred())
-				Ω(reader).ShouldNot(BeNil())
-				Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reader).NotTo(BeNil())
+				Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 
 				cache.Remove(cacheKey)
-				Ω(filenamesInDir(cacheDir)).Should(HaveLen(1))
+				Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 
 				reader.Close()
-				Ω(filenamesInDir(cacheDir)).Should(HaveLen(0))
+				Expect(filenamesInDir(cacheDir)).To(HaveLen(0))
 			})
 		})
 	})
@@ -319,7 +319,7 @@ var _ = Describe("FileCache", func() {
 
 func createFile(filename string, content string) *os.File {
 	sourceFile, err := ioutil.TempFile("", filename)
-	Ω(err).ShouldNot(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred())
 	sourceFile.WriteString(content)
 	sourceFile.Close()
 
@@ -328,7 +328,7 @@ func createFile(filename string, content string) *os.File {
 
 func filenamesInDir(dir string) []string {
 	entries, err := ioutil.ReadDir(dir)
-	Ω(err).ShouldNot(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred())
 
 	result := []string{}
 	for _, entry := range entries {

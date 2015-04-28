@@ -105,31 +105,31 @@ var _ = Describe("Downloader", func() {
 				})
 
 				It("does not return an error", func() {
-					Ω(downloadErr).ShouldNot(HaveOccurred())
+					Expect(downloadErr).NotTo(HaveOccurred())
 				})
 
 				It("only tries once", func() {
-					Ω(attempts).Should(Equal(1))
+					Expect(attempts).To(Equal(1))
 				})
 
 				It("claims to have downloaded", func() {
-					Ω(downloadedFile).ShouldNot(BeEmpty())
+					Expect(downloadedFile).NotTo(BeEmpty())
 				})
 
 				It("gets a file from a url", func() {
 					lock.Lock()
 					urlFromServer := testServer.URL + serverRequestUrls[0]
-					Ω(urlFromServer).To(Equal(url.String()))
+					Expect(urlFromServer).To(Equal(url.String()))
 					lock.Unlock()
 				})
 
 				It("should use the provided file as the download location", func() {
 					fileContents, _ := ioutil.ReadFile(downloadedFile)
-					Ω(fileContents).Should(ContainSubstring("Hello, client"))
+					Expect(fileContents).To(ContainSubstring("Hello, client"))
 				})
 
 				It("returns the ETag", func() {
-					Ω(downloadCachingInfo).Should(Equal(expectedCachingInfo))
+					Expect(downloadCachingInfo).To(Equal(expectedCachingInfo))
 				})
 			})
 
@@ -144,12 +144,12 @@ var _ = Describe("Downloader", func() {
 				})
 
 				It("succeeds without doing a checksum", func() {
-					Ω(downloadedFile).ShouldNot(BeEmpty())
-					Ω(downloadErr).ShouldNot(HaveOccurred())
+					Expect(downloadedFile).NotTo(BeEmpty())
+					Expect(downloadErr).NotTo(HaveOccurred())
 				})
 
 				It("should returns the ETag in the caching info", func() {
-					Ω(downloadCachingInfo.ETag).Should(Equal(expectedEtag))
+					Expect(downloadCachingInfo.ETag).To(Equal(expectedEtag))
 				})
 			})
 
@@ -162,12 +162,12 @@ var _ = Describe("Downloader", func() {
 				})
 
 				It("succeeds without doing a checksum", func() {
-					Ω(downloadedFile).ShouldNot(BeEmpty())
-					Ω(downloadErr).ShouldNot(HaveOccurred())
+					Expect(downloadedFile).NotTo(BeEmpty())
+					Expect(downloadErr).NotTo(HaveOccurred())
 				})
 
 				It("should returns no ETag in the caching info", func() {
-					Ω(downloadCachingInfo).Should(BeZero())
+					Expect(downloadCachingInfo).To(BeZero())
 				})
 			})
 		})
@@ -203,8 +203,8 @@ var _ = Describe("Downloader", func() {
 				Eventually(requestInitiated).Should(Receive())
 				Eventually(requestInitiated).Should(Receive())
 
-				Ω(<-errs).Should(HaveOccurred())
-				Ω(<-downloadedFiles).Should(BeEmpty())
+				Expect(<-errs).To(HaveOccurred())
+				Expect(<-downloadedFiles).To(BeEmpty())
 			})
 		})
 
@@ -218,8 +218,8 @@ var _ = Describe("Downloader", func() {
 
 			It("should return the error", func() {
 				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
-				Ω(err).Should(HaveOccurred())
-				Ω(downloadedFile).Should(BeEmpty())
+				Expect(err).To(HaveOccurred())
+				Expect(downloadedFile).To(BeEmpty())
 			})
 		})
 
@@ -233,8 +233,8 @@ var _ = Describe("Downloader", func() {
 
 			It("should return the error", func() {
 				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
-				Ω(err).Should(HaveOccurred())
-				Ω(downloadedFile).Should(BeEmpty())
+				Expect(err).To(HaveOccurred())
+				Expect(downloadedFile).To(BeEmpty())
 			})
 		})
 
@@ -255,9 +255,9 @@ var _ = Describe("Downloader", func() {
 
 			It("should return an error", func() {
 				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
-				Ω(err.Error()).Should(ContainSubstring("Checksum"))
-				Ω(downloadedFile).Should(BeEmpty())
-				Ω(cachingInfo).Should(BeZero())
+				Expect(err.Error()).To(ContainSubstring("Checksum"))
+				Expect(downloadedFile).To(BeEmpty())
+				Expect(cachingInfo).To(BeZero())
 			})
 		})
 
@@ -278,9 +278,9 @@ var _ = Describe("Downloader", func() {
 
 			It("should return an error", func() {
 				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
-				Ω(err).Should(HaveOccurred())
-				Ω(downloadedFile).Should(BeEmpty())
-				Ω(cachingInfo).Should(BeZero())
+				Expect(err).To(HaveOccurred())
+				Expect(downloadedFile).To(BeEmpty())
+				Expect(cachingInfo).To(BeZero())
 			})
 		})
 
@@ -356,7 +356,7 @@ var _ = Describe("Downloader", func() {
 
 			var err error
 			tempDir, err = ioutil.TempDir("", "temp-dl-dir")
-			Ω(err).ShouldNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			server = ghttp.NewServer()
 			server.AppendHandlers(
@@ -418,7 +418,7 @@ var _ = Describe("Downloader", func() {
 				cancelChan := make(chan struct{}, 0)
 				close(cancelChan)
 				_, _, err := downloadTestFile(cancelChan)
-				Ω(err).Should(Equal(ErrDownloadCancelled))
+				Expect(err).To(Equal(ErrDownloadCancelled))
 				<-barrier
 			})
 		})
@@ -462,8 +462,8 @@ var _ = Describe("Downloader", func() {
 
 				It("should return that it did not download", func() {
 					downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo, cancelChan)
-					Ω(downloadedFile).Should(BeEmpty())
-					Ω(err).ShouldNot(HaveOccurred())
+					Expect(downloadedFile).To(BeEmpty())
+					Expect(err).NotTo(HaveOccurred())
 				})
 			})
 
@@ -486,11 +486,11 @@ var _ = Describe("Downloader", func() {
 
 				It("should download the file", func() {
 					downloadedFile, _, err = downloader.Download(url, createDestFile, cachedInfo, cancelChan)
-					Ω(err).ShouldNot(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred())
 
 					info, err := os.Stat(downloadedFile)
-					Ω(err).ShouldNot(HaveOccurred())
-					Ω(info.Size()).Should(Equal(int64(len(body))))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(info.Size()).To(Equal(int64(len(body))))
 				})
 			})
 
@@ -513,8 +513,8 @@ var _ = Describe("Downloader", func() {
 
 				It("should return false with an error", func() {
 					downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo, cancelChan)
-					Ω(downloadedFile).Should(BeEmpty())
-					Ω(err).Should(HaveOccurred())
+					Expect(downloadedFile).To(BeEmpty())
+					Expect(err).To(HaveOccurred())
 				})
 			})
 		})
