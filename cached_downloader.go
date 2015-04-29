@@ -136,6 +136,8 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, transf
 }
 
 func (c *cachedDownloader) acquireLimiter(cacheKey string, cancelChan <-chan struct{}) (chan struct{}, error) {
+	startTime := time.Now()
+
 	for {
 		c.lock.Lock()
 		rateLimiter := c.inProgress[cacheKey]
@@ -150,7 +152,7 @@ func (c *cachedDownloader) acquireLimiter(cacheKey string, cancelChan <-chan str
 		select {
 		case <-rateLimiter:
 		case <-cancelChan:
-			return nil, ErrDownloadCancelled
+			return nil, NewDownloadCancelledError("acquire-limiter", time.Now().Sub(startTime))
 		}
 	}
 }

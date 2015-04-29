@@ -315,7 +315,7 @@ var _ = Describe("Downloader", func() {
 				Eventually(requestInitiated).Should(Receive())
 				close(cancelChan)
 
-				Eventually(errs).Should(Receive(Equal(ErrDownloadCancelled)))
+				Eventually(errs).Should(Receive(BeAssignableToTypeOf(NewDownloadCancelledError("", 0))))
 
 				close(completeRequest)
 			})
@@ -332,7 +332,7 @@ var _ = Describe("Downloader", func() {
 				completeRequest <- struct{}{}
 				close(cancelChan)
 
-				Eventually(errs).Should(Receive(Equal(ErrDownloadCancelled)))
+				Eventually(errs).Should(Receive(BeAssignableToTypeOf(NewDownloadCancelledError("", 0))))
 				close(completeRequest)
 			})
 
@@ -418,7 +418,7 @@ var _ = Describe("Downloader", func() {
 				cancelChan := make(chan struct{}, 0)
 				close(cancelChan)
 				_, _, err := downloadTestFile(cancelChan)
-				Expect(err).To(Equal(ErrDownloadCancelled))
+				Expect(err).To(BeAssignableToTypeOf(NewDownloadCancelledError("", 0)))
 				<-barrier
 			})
 		})

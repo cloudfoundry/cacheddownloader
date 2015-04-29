@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"crypto/tls"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -18,7 +17,21 @@ import (
 
 const MAX_DOWNLOAD_ATTEMPTS = 3
 
-var ErrDownloadCancelled error = errors.New("Download cancelled")
+type DownloadCancelledError struct {
+	source   string
+	duration time.Duration
+}
+
+func NewDownloadCancelledError(source string, duration time.Duration) error {
+	return &DownloadCancelledError{
+		source:   source,
+		duration: duration,
+	}
+}
+
+func (e *DownloadCancelledError) Error() string {
+	return fmt.Sprintf("Download cancelled: source '%s', duration '%s'", e.source, e.duration)
+}
 
 type Downloader struct {
 	client                    *http.Client
@@ -57,10 +70,12 @@ func (downloader *Downloader) Download(
 	cancelChan <-chan struct{},
 ) (path string, cachingInfoOut CachingInfoType, err error) {
 
+	startTime := time.Now()
+
 	select {
 	case downloader.concurrentDownloadBarrier <- struct{}{}:
 	case <-cancelChan:
-		return "", CachingInfoType{}, ErrDownloadCancelled
+		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Now().Sub(startTime))
 	}
 
 	defer func() {
@@ -70,7 +85,11 @@ func (downloader *Downloader) Download(
 	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
 		path, cachingInfoOut, err = downloader.fetchToFile(url, createDestination, cachingInfoIn, cancelChan)
 
-		if err == ErrDownloadCancelled || err == nil {
+		if err == nil {
+			break
+		}
+
+		if _, ok := err.(*DownloadCancelledError); ok {
 			break
 		}
 	}
@@ -116,12 +135,14 @@ func (downloader *Downloader) fetchToFile(
 		}()
 	}
 
+	startTime := time.Now()
+
 	var resp *http.Response
 	resp, err = downloader.client.Do(req)
 	if err != nil {
 		select {
 		case <-cancelChan:
-			err = ErrDownloadCancelled
+			err = NewDownloadCancelledError("fetch-request", time.Now().Sub(startTime))
 		default:
 		}
 		return "", CachingInfoType{}, err
@@ -169,11 +190,13 @@ func (downloader *Downloader) fetchToFile(
 
 	hash := md5.New()
 
+	startTime = time.Now()
+
 	_, err = io.Copy(io.MultiWriter(destinationFile, hash), resp.Body)
 	if err != nil {
 		select {
 		case <-cancelChan:
-			err = ErrDownloadCancelled
+			err = NewDownloadCancelledError("copy-body", time.Now().Sub(startTime))
 		default:
 		}
 		return "", CachingInfoType{}, err

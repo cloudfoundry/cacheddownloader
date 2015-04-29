@@ -566,7 +566,7 @@ var _ = Describe("File cache", func() {
 				close(cancelChan)
 
 				_, _, err := cache.Fetch(url, cacheKey, NoopTransform, cancelChan)
-				Expect(err).To(Equal(ErrDownloadCancelled))
+				Expect(err).To(BeAssignableToTypeOf(NewDownloadCancelledError("", 0)))
 
 				close(completeRequest)
 				Eventually(errs).Should(Receive(BeNil()))
