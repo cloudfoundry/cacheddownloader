@@ -20,17 +20,19 @@ const MAX_DOWNLOAD_ATTEMPTS = 3
 type DownloadCancelledError struct {
 	source   string
 	duration time.Duration
+	written  int64
 }
 
-func NewDownloadCancelledError(source string, duration time.Duration) error {
+func NewDownloadCancelledError(source string, duration time.Duration, written int64) error {
 	return &DownloadCancelledError{
 		source:   source,
 		duration: duration,
+		written:  written,
 	}
 }
 
 func (e *DownloadCancelledError) Error() string {
-	return fmt.Sprintf("Download cancelled: source '%s', duration '%s'", e.source, e.duration)
+	return fmt.Sprintf("Download cancelled: source '%s', duration '%s', bytes '%d'", e.source, e.duration, e.written)
 }
 
 type Downloader struct {
@@ -75,7 +77,7 @@ func (downloader *Downloader) Download(
 	select {
 	case downloader.concurrentDownloadBarrier <- struct{}{}:
 	case <-cancelChan:
-		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Now().Sub(startTime))
+		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Now().Sub(startTime), -1)
 	}
 
 	defer func() {
@@ -142,7 +144,7 @@ func (downloader *Downloader) fetchToFile(
 	if err != nil {
 		select {
 		case <-cancelChan:
-			err = NewDownloadCancelledError("fetch-request", time.Now().Sub(startTime))
+			err = NewDownloadCancelledError("fetch-request", time.Now().Sub(startTime), -1)
 		default:
 		}
 		return "", CachingInfoType{}, err
@@ -192,11 +194,11 @@ func (downloader *Downloader) fetchToFile(
 
 	startTime = time.Now()
 
-	_, err = io.Copy(io.MultiWriter(destinationFile, hash), resp.Body)
+	written, err := io.Copy(io.MultiWriter(destinationFile, hash), resp.Body)
 	if err != nil {
 		select {
 		case <-cancelChan:
-			err = NewDownloadCancelledError("copy-body", time.Now().Sub(startTime))
+			err = NewDownloadCancelledError("copy-body", time.Now().Sub(startTime), written)
 		default:
 		}
 		return "", CachingInfoType{}, err

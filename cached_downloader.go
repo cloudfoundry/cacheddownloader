@@ -152,7 +152,7 @@ func (c *cachedDownloader) acquireLimiter(cacheKey string, cancelChan <-chan str
 		select {
 		case <-rateLimiter:
 		case <-cancelChan:
-			return nil, NewDownloadCancelledError("acquire-limiter", time.Now().Sub(startTime))
+			return nil, NewDownloadCancelledError("acquire-limiter", time.Now().Sub(startTime), -1)
 		}
 	}
 }
