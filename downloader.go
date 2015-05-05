@@ -35,6 +35,25 @@ func (e *DownloadCancelledError) Error() string {
 	return fmt.Sprintf("Download cancelled: source '%s', duration '%s', bytes '%d'", e.source, e.duration, e.written)
 }
 
+type deadlineConn struct {
+	Timeout time.Duration
+	net.Conn
+}
+
+func (c *deadlineConn) Read(b []byte) (n int, err error) {
+	if err = c.Conn.SetDeadline(time.Now().Add(c.Timeout)); err != nil {
+		return
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *deadlineConn) Write(b []byte) (n int, err error) {
+	if err = c.Conn.SetDeadline(time.Now().Add(c.Timeout)); err != nil {
+		return
+	}
+	return c.Conn.Write(b)
+}
+
 type Downloader struct {
 	client                    *http.Client
 	concurrentDownloadBarrier chan struct{}
@@ -43,15 +62,23 @@ type Downloader struct {
 func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool) *Downloader {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
-		Dial: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).Dial,
+		Dial: func(netw, addr string) (net.Conn, error) {
+			c, err := net.DialTimeout(netw, addr, 10*time.Second)
+			if err != nil {
+				return nil, err
+			}
+			if tc, ok := c.(*net.TCPConn); ok {
+				tc.SetKeepAlive(true)
+				tc.SetKeepAlivePeriod(30 * time.Second)
+			}
+			return &deadlineConn{5 * time.Second, c}, nil
+		},
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: skipSSLVerification,
 			MinVersion:         tls.VersionTLS10,
 		},
+		DisableKeepAlives: true,
 	}
 
 	client := &http.Client{
