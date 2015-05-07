@@ -15,7 +15,10 @@ import (
 	"time"
 )
 
-const MAX_DOWNLOAD_ATTEMPTS = 3
+const (
+	MAX_DOWNLOAD_ATTEMPTS = 3
+	NoBytesReceived       = -1
+)
 
 type DownloadCancelledError struct {
 	source   string
@@ -32,7 +35,11 @@ func NewDownloadCancelledError(source string, duration time.Duration, written in
 }
 
 func (e *DownloadCancelledError) Error() string {
-	return fmt.Sprintf("Download cancelled: source '%s', duration '%s', bytes '%d'", e.source, e.duration, e.written)
+	msg := fmt.Sprintf("Download cancelled: source '%s', duration '%s'", e.source, e.duration)
+	if e.written != NoBytesReceived {
+		msg = fmt.Sprintf("%s, bytes '%d'", msg, e.written)
+	}
+	return msg
 }
 
 type deadlineConn struct {
@@ -60,6 +67,10 @@ type Downloader struct {
 }
 
 func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool) *Downloader {
+	return NewDownloaderWithDeadline(timeout, 5*time.Second, maxConcurrentDownloads, skipSSLVerification)
+}
+
+func NewDownloaderWithDeadline(timeout time.Duration, deadline time.Duration, maxConcurrentDownloads int, skipSSLVerification bool) *Downloader {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: func(netw, addr string) (net.Conn, error) {
@@ -71,7 +82,7 @@ func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVer
 				tc.SetKeepAlive(true)
 				tc.SetKeepAlivePeriod(30 * time.Second)
 			}
-			return &deadlineConn{5 * time.Second, c}, nil
+			return &deadlineConn{deadline, c}, nil
 		},
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig: &tls.Config{
@@ -104,7 +115,7 @@ func (downloader *Downloader) Download(
 	select {
 	case downloader.concurrentDownloadBarrier <- struct{}{}:
 	case <-cancelChan:
-		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Now().Sub(startTime), -1)
+		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Now().Sub(startTime), NoBytesReceived)
 	}
 
 	defer func() {
@@ -171,7 +182,7 @@ func (downloader *Downloader) fetchToFile(
 	if err != nil {
 		select {
 		case <-cancelChan:
-			err = NewDownloadCancelledError("fetch-request", time.Now().Sub(startTime), -1)
+			err = NewDownloadCancelledError("fetch-request", time.Now().Sub(startTime), NoBytesReceived)
 		default:
 		}
 		return "", CachingInfoType{}, err

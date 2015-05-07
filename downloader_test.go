@@ -5,9 +5,10 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	Url "net/url"
+	"net/url"
 	"os"
 	"strconv"
 	"sync"
@@ -45,7 +46,7 @@ var _ = Describe("Downloader", func() {
 	})
 
 	Describe("Download", func() {
-		var url *Url.URL
+		var serverUrl *url.URL
 
 		BeforeEach(func() {
 			serverRequestUrls = []string{}
@@ -76,9 +77,8 @@ var _ = Describe("Downloader", func() {
 			})
 
 			JustBeforeEach(func() {
-				serverUrl := testServer.URL + "/somepath"
-				url, _ = url.Parse(serverUrl)
-				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
 			})
 
 			Context("and contains a matching MD5 Hash in the Etag", func() {
@@ -119,7 +119,7 @@ var _ = Describe("Downloader", func() {
 				It("gets a file from a url", func() {
 					lock.Lock()
 					urlFromServer := testServer.URL + serverRequestUrls[0]
-					Expect(urlFromServer).To(Equal(url.String()))
+					Expect(urlFromServer).To(Equal(serverUrl.String()))
 					lock.Unlock()
 				})
 
@@ -185,8 +185,7 @@ var _ = Describe("Downloader", func() {
 					fmt.Fprint(w, "Hello, client")
 				}))
 
-				serverUrl := testServer.URL + "/somepath"
-				url, _ = url.Parse(serverUrl)
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
 			})
 
 			It("should retry 3 times and return an error", func() {
@@ -194,7 +193,7 @@ var _ = Describe("Downloader", func() {
 				downloadedFiles := make(chan string)
 
 				go func() {
-					downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
 					errs <- err
 					downloadedFiles <- downloadedFile
 				}()
@@ -211,13 +210,11 @@ var _ = Describe("Downloader", func() {
 		Context("when the download fails with a protocol error", func() {
 			BeforeEach(func() {
 				// No server to handle things!
-
-				serverUrl := "http://127.0.0.1:54321/somepath"
-				url, _ = url.Parse(serverUrl)
+				serverUrl, _ = url.Parse("http://127.0.0.1:54321/somepath")
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 			})
@@ -227,14 +224,42 @@ var _ = Describe("Downloader", func() {
 			BeforeEach(func() {
 				testServer = httptest.NewServer(http.NotFoundHandler())
 
-				serverUrl := testServer.URL + "/somepath"
-				url, _ = url.Parse(serverUrl)
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
+			})
+		})
+
+		Context("when the read exceeds the deadline timeout", func() {
+			BeforeEach(func() {
+				downloader = NewDownloaderWithDeadline(1*time.Second, 30*time.Millisecond, 10, false)
+
+				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					time.Sleep(100 * time.Millisecond)
+				}))
+
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
+			})
+
+			It("fails with a nested read error", func() {
+				errs := make(chan error)
+
+				go func() {
+					_, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+					errs <- err
+				}()
+
+				var err error
+				Eventually(errs).Should(Receive(&err))
+				uErr, ok := err.(*url.Error)
+				Expect(ok).To(BeTrue())
+				opErr, ok := uErr.Err.(*net.OpError)
+				Expect(ok).To(BeTrue())
+				Expect(opErr.Op).To(Equal("read"))
 			})
 		})
 
@@ -249,12 +274,11 @@ var _ = Describe("Downloader", func() {
 					fmt.Fprint(w, incompleteMsg)
 				}))
 
-				serverUrl := testServer.URL + "/somepath"
-				url, _ = url.Parse(serverUrl)
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
 			})
 
 			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
 				Expect(err.Error()).To(ContainSubstring("Checksum"))
 				Expect(downloadedFile).To(BeEmpty())
 				Expect(cachingInfo).To(BeZero())
@@ -272,12 +296,11 @@ var _ = Describe("Downloader", func() {
 					fmt.Fprint(w, incompleteMsg)
 				}))
 
-				serverUrl := testServer.URL + "/somepath"
-				url, _ = url.Parse(serverUrl)
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
 			})
 
 			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 				Expect(cachingInfo).To(BeZero())
@@ -300,22 +323,21 @@ var _ = Describe("Downloader", func() {
 					<-completeRequest
 				}))
 
-				serverUrl := testServer.URL + "/somepath"
-				url, _ = url.Parse(serverUrl)
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
 			})
 
 			It("cancels the request", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+					_, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
 					errs <- err
 				}()
 
 				Eventually(requestInitiated).Should(Receive())
 				close(cancelChan)
 
-				Eventually(errs).Should(Receive(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, -1))))
+				Eventually(errs).Should(Receive(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, NoBytesReceived))))
 
 				close(completeRequest)
 			})
@@ -324,7 +346,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(url, createDestFile, CachingInfoType{}, cancelChan)
+					_, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
 					errs <- err
 				}()
 
@@ -332,20 +354,19 @@ var _ = Describe("Downloader", func() {
 				completeRequest <- struct{}{}
 				close(cancelChan)
 
-				Eventually(errs).Should(Receive(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, -1))))
+				Eventually(errs).Should(Receive(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, NoBytesReceived))))
 				close(completeRequest)
 			})
-
 		})
 	})
 
 	Describe("Concurrent downloads", func() {
 		var (
-			server  *ghttp.Server
-			url     *Url.URL
-			barrier chan interface{}
-			results chan bool
-			tempDir string
+			server    *ghttp.Server
+			serverUrl *url.URL
+			barrier   chan interface{}
+			results   chan bool
+			tempDir   string
 		)
 
 		BeforeEach(func() {
@@ -377,7 +398,7 @@ var _ = Describe("Downloader", func() {
 				),
 			)
 
-			url, _ = Url.Parse(server.URL() + "/the-file")
+			serverUrl, _ = url.Parse(server.URL() + "/the-file")
 		})
 
 		AfterEach(func() {
@@ -387,7 +408,7 @@ var _ = Describe("Downloader", func() {
 
 		downloadTestFile := func(cancelChan <-chan struct{}) (path string, cachingInfoOut CachingInfoType, err error) {
 			return downloader.Download(
-				url,
+				serverUrl,
 				func() (*os.File, error) {
 					return ioutil.TempFile(tempDir, "the-file")
 				},
@@ -418,7 +439,7 @@ var _ = Describe("Downloader", func() {
 				cancelChan := make(chan struct{}, 0)
 				close(cancelChan)
 				_, _, err := downloadTestFile(cancelChan)
-				Expect(err).To(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, -1)))
+				Expect(err).To(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, NoBytesReceived)))
 				<-barrier
 			})
 		})
@@ -428,7 +449,7 @@ var _ = Describe("Downloader", func() {
 				server     *ghttp.Server
 				cachedInfo CachingInfoType
 				statusCode int
-				url        *Url.URL
+				serverUrl  *url.URL
 				body       string
 			)
 
@@ -448,7 +469,7 @@ var _ = Describe("Downloader", func() {
 					ghttp.RespondWithPtr(&statusCode, &body),
 				))
 
-				url, _ = Url.Parse(server.URL() + "/get-the-file")
+				serverUrl, _ = url.Parse(server.URL() + "/get-the-file")
 			})
 
 			AfterEach(func() {
@@ -461,7 +482,7 @@ var _ = Describe("Downloader", func() {
 				})
 
 				It("should return that it did not download", func() {
-					downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo, cancelChan)
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cachedInfo, cancelChan)
 					Expect(downloadedFile).To(BeEmpty())
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -485,7 +506,7 @@ var _ = Describe("Downloader", func() {
 				})
 
 				It("should download the file", func() {
-					downloadedFile, _, err = downloader.Download(url, createDestFile, cachedInfo, cancelChan)
+					downloadedFile, _, err = downloader.Download(serverUrl, createDestFile, cachedInfo, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 
 					info, err := os.Stat(downloadedFile)
@@ -512,7 +533,7 @@ var _ = Describe("Downloader", func() {
 				})
 
 				It("should return false with an error", func() {
-					downloadedFile, _, err := downloader.Download(url, createDestFile, cachedInfo, cancelChan)
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cachedInfo, cancelChan)
 					Expect(downloadedFile).To(BeEmpty())
 					Expect(err).To(HaveOccurred())
 				})
