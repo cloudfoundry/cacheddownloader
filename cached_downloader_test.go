@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	. "github.com/cloudfoundry-incubator/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
-	. "github.com/pivotal-golang/cacheddownloader"
 )
 
 const MAX_CONCURRENT_DOWNLOADS = 10

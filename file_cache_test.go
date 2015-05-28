@@ -5,9 +5,9 @@ import (
 	"io/ioutil"
 	"os"
 
+	. "github.com/cloudfoundry-incubator/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/pivotal-golang/cacheddownloader"
 )
 
 var _ = Describe("FileCache", func() {

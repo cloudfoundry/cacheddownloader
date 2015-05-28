@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	. "github.com/cloudfoundry-incubator/cacheddownloader"
 	"github.com/pivotal-golang/archiver/extractor/test_helper"
-	. "github.com/pivotal-golang/cacheddownloader"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

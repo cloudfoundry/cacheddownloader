@@ -6,11 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/pivotal-golang/archiver/extractor/test_helper"
-	. "github.com/pivotal-golang/cacheddownloader"
-
+	. "github.com/cloudfoundry-incubator/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/pivotal-golang/archiver/extractor/test_helper"
 )
 
 var _ = Describe("TarTransformer", func() {

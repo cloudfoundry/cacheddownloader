@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/pivotal-golang/cacheddownloader"
+	"github.com/cloudfoundry-incubator/cacheddownloader"
 )
 
 type FakeCachedDownloader struct {

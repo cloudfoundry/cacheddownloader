@@ -3,7 +3,7 @@ package cacheddownloader_test
 import (
 	"time"
 
-	. "github.com/pivotal-golang/cacheddownloader"
+	. "github.com/cloudfoundry-incubator/cacheddownloader"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

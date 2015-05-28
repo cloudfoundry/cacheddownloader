@@ -16,9 +16,9 @@ import (
 
 	"github.com/onsi/gomega/ghttp"
 
+	. "github.com/cloudfoundry-incubator/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/pivotal-golang/cacheddownloader"
 )
 
 func md5HexEtag(content string) string {
