@@ -235,14 +235,22 @@ var _ = Describe("Downloader", func() {
 		})
 
 		Context("when the read exceeds the deadline timeout", func() {
+			var done chan struct{}
+
 			BeforeEach(func() {
+				done = make(chan struct{}, 3)
 				downloader = NewDownloaderWithDeadline(1*time.Second, 30*time.Millisecond, 10, false)
 
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					time.Sleep(100 * time.Millisecond)
+					done <- struct{}{}
 				}))
 
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
+			})
+
+			AfterEach(func() {
+				Eventually(done).Should(HaveLen(3))
 			})
 
 			It("fails with a nested read error", func() {
