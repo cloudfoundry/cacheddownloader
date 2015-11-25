@@ -19,7 +19,6 @@ type FileCache struct {
 	cachedPath     string
 	maxSizeInBytes int64
 	entries        map[string]*fileCacheEntry
-	cacheFilePaths map[string]string
 	seq            uint64
 }
 
@@ -36,7 +35,6 @@ func NewCache(dir string, maxSizeInBytes int64) *FileCache {
 		cachedPath:     dir,
 		maxSizeInBytes: maxSizeInBytes,
 		entries:        map[string]*fileCacheEntry{},
-		cacheFilePaths: map[string]string{},
 		seq:            0,
 	}
 }
