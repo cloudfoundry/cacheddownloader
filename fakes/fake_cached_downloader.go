@@ -23,6 +23,26 @@ type FakeCachedDownloader struct {
 		result2 int64
 		result3 error
 	}
+	FetchAsDirectoryStub        func(urlToFetch *url.URL, cacheKey string, cancelChan <-chan struct{}) (string, error)
+	fetchAsDirectoryMutex       sync.RWMutex
+	fetchAsDirectoryArgsForCall []struct {
+		urlToFetch *url.URL
+		cacheKey   string
+		cancelChan <-chan struct{}
+	}
+	fetchAsDirectoryReturns struct {
+		result1 string
+		result2 error
+	}
+	CloseDirectoryStub        func(cacheKey, directoryPath string) error
+	closeDirectoryMutex       sync.RWMutex
+	closeDirectoryArgsForCall []struct {
+		cacheKey      string
+		directoryPath string
+	}
+	closeDirectoryReturns struct {
+		result1 error
+	}
 }
 
 func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, transformer cacheddownloader.CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, int64, error) {
@@ -60,6 +80,74 @@ func (fake *FakeCachedDownloader) FetchReturns(result1 io.ReadCloser, result2 in
 		result2 int64
 		result3 error
 	}{result1, result2, result3}
+}
+
+func (fake *FakeCachedDownloader) FetchAsDirectory(urlToFetch *url.URL, cacheKey string, cancelChan <-chan struct{}) (string, error) {
+	fake.fetchAsDirectoryMutex.Lock()
+	fake.fetchAsDirectoryArgsForCall = append(fake.fetchAsDirectoryArgsForCall, struct {
+		urlToFetch *url.URL
+		cacheKey   string
+		cancelChan <-chan struct{}
+	}{urlToFetch, cacheKey, cancelChan})
+	fake.fetchAsDirectoryMutex.Unlock()
+	if fake.FetchAsDirectoryStub != nil {
+		return fake.FetchAsDirectoryStub(urlToFetch, cacheKey, cancelChan)
+	} else {
+		return fake.fetchAsDirectoryReturns.result1, fake.fetchAsDirectoryReturns.result2
+	}
+}
+
+func (fake *FakeCachedDownloader) FetchAsDirectoryCallCount() int {
+	fake.fetchAsDirectoryMutex.RLock()
+	defer fake.fetchAsDirectoryMutex.RUnlock()
+	return len(fake.fetchAsDirectoryArgsForCall)
+}
+
+func (fake *FakeCachedDownloader) FetchAsDirectoryArgsForCall(i int) (*url.URL, string, <-chan struct{}) {
+	fake.fetchAsDirectoryMutex.RLock()
+	defer fake.fetchAsDirectoryMutex.RUnlock()
+	return fake.fetchAsDirectoryArgsForCall[i].urlToFetch, fake.fetchAsDirectoryArgsForCall[i].cacheKey, fake.fetchAsDirectoryArgsForCall[i].cancelChan
+}
+
+func (fake *FakeCachedDownloader) FetchAsDirectoryReturns(result1 string, result2 error) {
+	fake.FetchAsDirectoryStub = nil
+	fake.fetchAsDirectoryReturns = struct {
+		result1 string
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeCachedDownloader) CloseDirectory(cacheKey string, directoryPath string) error {
+	fake.closeDirectoryMutex.Lock()
+	fake.closeDirectoryArgsForCall = append(fake.closeDirectoryArgsForCall, struct {
+		cacheKey      string
+		directoryPath string
+	}{cacheKey, directoryPath})
+	fake.closeDirectoryMutex.Unlock()
+	if fake.CloseDirectoryStub != nil {
+		return fake.CloseDirectoryStub(cacheKey, directoryPath)
+	} else {
+		return fake.closeDirectoryReturns.result1
+	}
+}
+
+func (fake *FakeCachedDownloader) CloseDirectoryCallCount() int {
+	fake.closeDirectoryMutex.RLock()
+	defer fake.closeDirectoryMutex.RUnlock()
+	return len(fake.closeDirectoryArgsForCall)
+}
+
+func (fake *FakeCachedDownloader) CloseDirectoryArgsForCall(i int) (string, string) {
+	fake.closeDirectoryMutex.RLock()
+	defer fake.closeDirectoryMutex.RUnlock()
+	return fake.closeDirectoryArgsForCall[i].cacheKey, fake.closeDirectoryArgsForCall[i].directoryPath
+}
+
+func (fake *FakeCachedDownloader) CloseDirectoryReturns(result1 error) {
+	fake.CloseDirectoryStub = nil
+	fake.closeDirectoryReturns = struct {
+		result1 error
+	}{result1}
 }
 
 var _ cacheddownloader.CachedDownloader = new(FakeCachedDownloader)

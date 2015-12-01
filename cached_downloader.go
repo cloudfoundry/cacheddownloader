@@ -18,8 +18,25 @@ type CacheTransformer func(source, destination string) (newSize int64, err error
 
 //go:generate counterfeiter . CachedDownloader
 
+// CachedDownloader is responsible for downloading and caching files and maintaining reference counts for each cache entry.
+// Entries in the cache with no active references are ejected from the cache when new space is needed.
 type CachedDownloader interface {
-	Fetch(urlToFetch *url.URL, cacheKey string, transformer CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, int64, error)
+	// Fetch downloads the file at the given URL and stores it in the cache with the given cacheKey.
+	// If cacheKey is empty, the file will not be saved in the cache. A transformer function can be used to do post-download
+	// processing on the file before it is stored in the cache.
+	//
+	// Fetch returns a stream that can be used to read the contents of the downloaded file. While this stream is active (i.e., not yet closed),
+	// the associated cache entry will be considered in use and will not be ejected from the cache.
+	Fetch(urlToFetch *url.URL, cacheKey string, transformer CacheTransformer, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error)
+
+	// FetchAsDirectory downloads the tarfile pointed to by the given URL, expands the tarfile into a directory, and returns the path of that directory.
+	FetchAsDirectory(urlToFetch *url.URL, cacheKey string, cancelChan <-chan struct{}) (dirPath string, err error)
+
+	// CloseDirectory decrements the usage counter for the given cacheKey/directoryPath pair.
+	// It should be called when the directory returned by FetchAsDirectory is no longer in use.
+	// In this way, FetchAsDirectory and CloseDirectory should be treated as a pair of operations,
+	// and a process that calls FetchAsDirectory should make sure a corresponding CloseDirectory is eventually called.
+	CloseDirectory(cacheKey, directoryPath string) error
 }
 
 func NoopTransform(source, destination string) (int64, error) {
@@ -68,6 +85,11 @@ func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadT
 		lock:         &sync.Mutex{},
 		inProgress:   map[string]chan struct{}{},
 	}
+}
+
+func (c *cachedDownloader) CloseDirectory(cacheKey, directoryPath string) error {
+	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
+	return c.cache.CloseDirectory(cacheKey, directoryPath)
 }
 
 func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string, transformer CacheTransformer, cancelChan <-chan struct{}) (io.ReadCloser, int64, error) {
@@ -133,6 +155,60 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, transf
 
 	// return newly fetched file
 	return newReader, size, err
+}
+
+func (c *cachedDownloader) FetchAsDirectory(url *url.URL, cacheKey string, cancelChan <-chan struct{}) (string, error) {
+	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
+	return c.fetchCachedDirectory(url, cacheKey, cancelChan)
+}
+
+func (c *cachedDownloader) fetchCachedDirectory(url *url.URL, cacheKey string, cancelChan <-chan struct{}) (string, error) {
+	rateLimiter, err := c.acquireLimiter(cacheKey, cancelChan)
+	if err != nil {
+		return "", err
+	}
+	defer c.releaseLimiter(cacheKey, rateLimiter)
+
+	// lookup cache entry
+	currentDirectory, currentCachingInfo, getErr := c.cache.GetDirectory(cacheKey)
+	if getErr == NotEnoughSpace {
+		// We had a cache hit but cannot expand it in the cache
+		return "", getErr
+	}
+
+	// download (short circuits if endpoint respects etag/etc.)
+	download, cacheIsWarm, _, err := c.populateCache(url, cacheKey, currentCachingInfo, TarTransform, cancelChan)
+	if err != nil {
+		if currentDirectory != "" {
+			c.cache.CloseDirectory(cacheKey, currentDirectory)
+		}
+		return "", err
+	}
+
+	// nothing had to be downloaded; return the cached entry
+	if cacheIsWarm {
+		return currentDirectory, getErr
+	}
+
+	// current cache is not fresh; disregard it
+	if currentDirectory != "" {
+		c.cache.CloseDirectory(cacheKey, currentDirectory)
+	}
+
+	// fetch uncached data
+	var newDirectory string
+	if download.cachingInfo.isCacheable() {
+		newDirectory, err = c.cache.AddDirectory(cacheKey, download.path, download.size, download.cachingInfo)
+		if err == NotEnoughSpace {
+			return "", err
+		}
+		// return newly fetched file
+		return newDirectory, err
+	} else {
+		c.cache.Remove(cacheKey)
+	}
+
+	return "", NotCacheable
 }
 
 func (c *cachedDownloader) acquireLimiter(cacheKey string, cancelChan <-chan struct{}) (chan struct{}, error) {

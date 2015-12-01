@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudfoundry-incubator/cacheddownloader"
 	"github.com/onsi/gomega/ghttp"
 
-	. "github.com/cloudfoundry-incubator/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -28,7 +28,7 @@ func md5HexEtag(content string) string {
 }
 
 var _ = Describe("Downloader", func() {
-	var downloader *Downloader
+	var downloader *cacheddownloader.Downloader
 	var testServer *httptest.Server
 	var serverRequestUrls []string
 	var lock *sync.Mutex
@@ -40,7 +40,7 @@ var _ = Describe("Downloader", func() {
 
 	BeforeEach(func() {
 		testServer = nil
-		downloader = NewDownloader(100*time.Millisecond, 10, false)
+		downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false)
 		lock = &sync.Mutex{}
 		cancelChan = make(chan struct{}, 0)
 	})
@@ -65,8 +65,8 @@ var _ = Describe("Downloader", func() {
 				downloadErr    error
 				downloadedFile string
 
-				downloadCachingInfo CachingInfoType
-				expectedCachingInfo CachingInfoType
+				downloadCachingInfo cacheddownloader.CachingInfoType
+				expectedCachingInfo cacheddownloader.CachingInfoType
 				expectedEtag        string
 			)
 
@@ -78,7 +78,7 @@ var _ = Describe("Downloader", func() {
 
 			JustBeforeEach(func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 			})
 
 			Context("and contains a matching MD5 Hash in the Etag", func() {
@@ -92,7 +92,7 @@ var _ = Describe("Downloader", func() {
 						lock.Unlock()
 
 						msg := "Hello, client"
-						expectedCachingInfo = CachingInfoType{
+						expectedCachingInfo = cacheddownloader.CachingInfoType{
 							ETag:         md5HexEtag(msg),
 							LastModified: "The 70s",
 						}
@@ -193,7 +193,7 @@ var _ = Describe("Downloader", func() {
 				downloadedFiles := make(chan string)
 
 				go func() {
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 					errs <- err
 					downloadedFiles <- downloadedFile
 				}()
@@ -214,7 +214,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 			})
@@ -228,7 +228,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 			})
@@ -239,7 +239,7 @@ var _ = Describe("Downloader", func() {
 
 			BeforeEach(func() {
 				done = make(chan struct{}, 3)
-				downloader = NewDownloaderWithDeadline(1*time.Second, 30*time.Millisecond, 10, false)
+				downloader = cacheddownloader.NewDownloaderWithDeadline(1*time.Second, 30*time.Millisecond, 10, false)
 
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					time.Sleep(100 * time.Millisecond)
@@ -257,7 +257,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 					errs <- err
 				}()
 
@@ -286,7 +286,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 				Expect(err.Error()).To(ContainSubstring("Checksum"))
 				Expect(downloadedFile).To(BeEmpty())
 				Expect(cachingInfo).To(BeZero())
@@ -308,7 +308,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 				Expect(cachingInfo).To(BeZero())
@@ -338,14 +338,14 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 					errs <- err
 				}()
 
 				Eventually(requestInitiated).Should(Receive())
 				close(cancelChan)
 
-				Eventually(errs).Should(Receive(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, NoBytesReceived))))
+				Eventually(errs).Should(Receive(BeAssignableToTypeOf(cacheddownloader.NewDownloadCancelledError("", 0, cacheddownloader.NoBytesReceived))))
 
 				close(completeRequest)
 			})
@@ -354,7 +354,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, CachingInfoType{}, cancelChan)
+					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
 					errs <- err
 				}()
 
@@ -362,7 +362,7 @@ var _ = Describe("Downloader", func() {
 				completeRequest <- struct{}{}
 				close(cancelChan)
 
-				Eventually(errs).Should(Receive(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, NoBytesReceived))))
+				Eventually(errs).Should(Receive(BeAssignableToTypeOf(cacheddownloader.NewDownloadCancelledError("", 0, cacheddownloader.NoBytesReceived))))
 				close(completeRequest)
 			})
 		})
@@ -381,7 +381,7 @@ var _ = Describe("Downloader", func() {
 			barrier = make(chan interface{}, 1)
 			results = make(chan bool, 1)
 
-			downloader = NewDownloader(1*time.Second, 1, false)
+			downloader = cacheddownloader.NewDownloader(1*time.Second, 1, false)
 
 			var err error
 			tempDir, err = ioutil.TempDir("", "temp-dl-dir")
@@ -414,13 +414,13 @@ var _ = Describe("Downloader", func() {
 			os.RemoveAll(tempDir)
 		})
 
-		downloadTestFile := func(cancelChan <-chan struct{}) (path string, cachingInfoOut CachingInfoType, err error) {
+		downloadTestFile := func(cancelChan <-chan struct{}) (path string, cachingInfoOut cacheddownloader.CachingInfoType, err error) {
 			return downloader.Download(
 				serverUrl,
 				func() (*os.File, error) {
 					return ioutil.TempFile(tempDir, "the-file")
 				},
-				CachingInfoType{},
+				cacheddownloader.CachingInfoType{},
 				cancelChan,
 			)
 		}
@@ -447,7 +447,7 @@ var _ = Describe("Downloader", func() {
 				cancelChan := make(chan struct{}, 0)
 				close(cancelChan)
 				_, _, err := downloadTestFile(cancelChan)
-				Expect(err).To(BeAssignableToTypeOf(NewDownloadCancelledError("", 0, NoBytesReceived)))
+				Expect(err).To(BeAssignableToTypeOf(cacheddownloader.NewDownloadCancelledError("", 0, cacheddownloader.NoBytesReceived)))
 				<-barrier
 			})
 		})
@@ -455,14 +455,14 @@ var _ = Describe("Downloader", func() {
 		Context("Downloading with caching info", func() {
 			var (
 				server     *ghttp.Server
-				cachedInfo CachingInfoType
+				cachedInfo cacheddownloader.CachingInfoType
 				statusCode int
 				serverUrl  *url.URL
 				body       string
 			)
 
 			BeforeEach(func() {
-				cachedInfo = CachingInfoType{
+				cachedInfo = cacheddownloader.CachingInfoType{
 					ETag:         "It's Just a Flesh Wound",
 					LastModified: "The 60s",
 				}
@@ -528,7 +528,7 @@ var _ = Describe("Downloader", func() {
 					statusCode = http.StatusInternalServerError
 
 					// cope with built in retry
-					for i := 0; i < MAX_DOWNLOAD_ATTEMPTS; i++ {
+					for i := 0; i < cacheddownloader.MAX_DOWNLOAD_ATTEMPTS; i++ {
 						server.AppendHandlers(ghttp.CombineHandlers(
 							ghttp.VerifyRequest("GET", "/get-the-file"),
 							ghttp.VerifyHeader(http.Header{

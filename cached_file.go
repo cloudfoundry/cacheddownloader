@@ -13,8 +13,7 @@ type CachedFile struct {
 
 func NewFileCloser(file *os.File, onClose func(string)) *CachedFile {
 	fc := &CachedFile{
-		File: file,
-
+		File:    file,
 		onClose: onClose,
 	}
 

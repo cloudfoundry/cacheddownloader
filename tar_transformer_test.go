@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	. "github.com/cloudfoundry-incubator/cacheddownloader"
+	"github.com/cloudfoundry-incubator/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/pivotal-golang/archiver/extractor/test_helper"
@@ -63,7 +63,7 @@ var _ = Describe("TarTransformer", func() {
 	})
 
 	JustBeforeEach(func() {
-		transformedSize, transformErr = TarTransform(sourcePath, destinationPath)
+		transformedSize, transformErr = cacheddownloader.TarTransform(sourcePath, destinationPath)
 	})
 
 	Context("when the file is already a .tar", func() {
@@ -155,7 +155,7 @@ var _ = Describe("TarTransformer", func() {
 		})
 
 		It("blows up horribly", func() {
-			Expect(transformErr).To(Equal(ErrUnknownArchiveFormat))
+			Expect(transformErr).To(Equal(cacheddownloader.ErrUnknownArchiveFormat))
 		})
 	})
 })
