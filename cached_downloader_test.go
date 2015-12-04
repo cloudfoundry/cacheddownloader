@@ -35,6 +35,11 @@ var _ = Describe("File cache", func() {
 		url             *Url.URL
 		server          *ghttp.Server
 		cancelChan      chan struct{}
+
+		file     io.ReadCloser
+		fileSize int64
+		err      error
+		dir      string
 	)
 
 	BeforeEach(func() {
@@ -65,13 +70,6 @@ var _ = Describe("File cache", func() {
 		os.RemoveAll(cachedPath)
 		os.RemoveAll(uncachedPath)
 	})
-
-	var (
-		file     io.ReadCloser
-		fileSize int64
-		err      error
-		dir      string
-	)
 
 	Describe("when the cache folder does not exist", func() {
 		It("should create it", func() {
@@ -748,7 +746,6 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should have removed the file from the cache", func() {
-					Expect(err).NotTo(HaveOccurred())
 					cache.CloseDirectory(cacheKey, fetchDir)
 					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
 				})
