@@ -1,13 +1,10 @@
 package cacheddownloader_test
 
 import (
-	"archive/tar"
-	"bytes"
 	"crypto/md5"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	Url "net/url"
 	"os"
@@ -604,7 +601,7 @@ var _ = Describe("File cache", func() {
 
 			Context("when the download succeeds", func() {
 				BeforeEach(func() {
-					downloadContent = CreateTarBuffer("test content", 0).Bytes()
+					downloadContent = createTarBuffer("test content", 0).Bytes()
 					server.AppendHandlers(ghttp.CombineHandlers(
 						ghttp.VerifyRequest("GET", "/my_file"),
 						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -636,7 +633,7 @@ var _ = Describe("File cache", func() {
 
 			Context("when the download succeeds but does not have an ETag", func() {
 				BeforeEach(func() {
-					downloadContent = CreateTarBuffer("test content", 0).Bytes()
+					downloadContent = createTarBuffer("test content", 0).Bytes()
 					server.AppendHandlers(ghttp.CombineHandlers(
 						ghttp.VerifyRequest("GET", "/my_file"),
 						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -675,7 +672,7 @@ var _ = Describe("File cache", func() {
 
 			BeforeEach(func() {
 				status = http.StatusOK
-				fileContent = CreateTarBuffer("now you see it", 0).Bytes()
+				fileContent = createTarBuffer("now you see it", 0).Bytes()
 
 				server.AppendHandlers(ghttp.CombineHandlers(
 					ghttp.VerifyRequest("GET", "/my_file"),
@@ -686,7 +683,7 @@ var _ = Describe("File cache", func() {
 				err := cache.CloseDirectory(cacheKey, dir)
 				Expect(err).ToNot(HaveOccurred())
 
-				downloadContent = CreateTarBuffer("now you don't", 0).Bytes()
+				downloadContent = createTarBuffer("now you don't", 0).Bytes()
 
 				etag := "second-round-etag"
 				returnedHeader.Set("ETag", etag)
@@ -783,7 +780,7 @@ var _ = Describe("File cache", func() {
 		Context("when the file size exceeds the total available cache size", func() {
 			var fileContent []byte
 			BeforeEach(func() {
-				fileContent = CreateTarBuffer("Test small string", 100).Bytes()
+				fileContent = createTarBuffer("Test small string", 100).Bytes()
 
 				server.AppendHandlers(ghttp.CombineHandlers(
 					ghttp.VerifyRequest("GET", "/my_file"),
@@ -800,7 +797,7 @@ var _ = Describe("File cache", func() {
 
 		Context("when the cache is full", func() {
 			fetchDirOfSize := func(name string, size int) {
-				fileContent := CreateTarBuffer("Test small string", size).Bytes()
+				fileContent := createTarBuffer("Test small string", size).Bytes()
 
 				url, _ = Url.Parse(server.URL() + "/" + name)
 				server.AppendHandlers(ghttp.CombineHandlers(
@@ -919,7 +916,7 @@ var _ = Describe("File cache", func() {
 
 				Context("the content will fit in the cache on expansion", func() {
 					BeforeEach(func() {
-						downloadContent = CreateTarBuffer("test content", 0).Bytes()
+						downloadContent = createTarBuffer("test content", 0).Bytes()
 					})
 
 					It("should not error", func() {
@@ -935,7 +932,7 @@ var _ = Describe("File cache", func() {
 
 				Context("the content will NOT fit in the cache on expansion", func() {
 					BeforeEach(func() {
-						downloadContent = CreateTarBuffer("test content", 12).Bytes()
+						downloadContent = createTarBuffer("test content", 12).Bytes()
 					})
 
 					It("should error", func() {
@@ -958,7 +955,7 @@ var _ = Describe("File cache", func() {
 						Expect(ioutil.ReadAll(cachedFile)).To(Equal(fillerContent))
 						cachedFile.Close()
 
-						downloadContent = CreateTarBuffer("test content", 10).Bytes()
+						downloadContent = createTarBuffer("test content", 10).Bytes()
 					})
 
 					It("should not error", func() {
@@ -1021,7 +1018,7 @@ var _ = Describe("File cache", func() {
 					fetchedFile, fetchedFileSize, fetchErr = cache.Fetch(url, cacheKey, cacheddownloader.TarTransform, cancelChan)
 				})
 				BeforeEach(func() {
-					downloadContent = CreateTarBuffer("test content", 0).Bytes()
+					downloadContent = createTarBuffer("test content", 0).Bytes()
 				})
 
 				It("should not error", func() {
@@ -1043,61 +1040,4 @@ type constTransformer struct {
 
 func (t constTransformer) ConstTransform(path string) (string, int64, error) {
 	return t.file, t.size, t.err
-}
-
-func CreateTarBuffer(content string, numFiles int) *bytes.Buffer {
-	// Create a buffer to write our archive to.
-	buf := new(bytes.Buffer)
-
-	// Create a new tar archive.
-	tw := tar.NewWriter(buf)
-	// Add some files to the archive.
-	var files = []struct {
-		Name, Body string
-		Type       byte
-		Mode       int64
-	}{
-		{"readme.txt", "This archive contains some text files.", tar.TypeReg, 0600},
-		{"diego.txt", "Diego names:\nVizzini\nGeoffrey\nPrincess Buttercup\n", tar.TypeReg, 0600},
-		{"testdir", "", tar.TypeDir, 0766},
-		{"testdir/file.txt", content, tar.TypeReg, 0600},
-	}
-
-	for _, file := range files {
-		hdr := &tar.Header{
-			Name:     file.Name,
-			Typeflag: file.Type,
-			Mode:     file.Mode,
-			Size:     int64(len(file.Body)),
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
-			log.Fatalln(err)
-		}
-		if _, err := tw.Write([]byte(file.Body)); err != nil {
-			log.Fatalln(err)
-		}
-	}
-
-	for i := 0; i < numFiles; i++ {
-		filename := fmt.Sprintf("file_%d", i)
-		hdr := &tar.Header{
-			Name:     filename,
-			Typeflag: tar.TypeReg,
-			Mode:     0600,
-			Size:     int64(len(content)),
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
-			log.Fatalln(err)
-		}
-		if _, err := tw.Write([]byte(content)); err != nil {
-			log.Fatalln(err)
-		}
-
-	}
-	// Make sure to check the error on Close.
-	if err := tw.Close(); err != nil {
-		log.Fatalln(err)
-	}
-
-	return buf
 }
