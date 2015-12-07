@@ -45,7 +45,7 @@ var _ = Describe("Integration", func() {
 		url, err = url.Parse(server.URL + "/file")
 		Expect(err).NotTo(HaveOccurred())
 
-		downloader = cacheddownloader.New(cachedPath, uncachedPath, cacheMaxSizeInBytes, downloadTimeout, 10, false)
+		downloader = cacheddownloader.New(cachedPath, uncachedPath, cacheMaxSizeInBytes, downloadTimeout, 10, false, cacheddownloader.NoopTransform)
 	})
 
 	AfterEach(func() {
@@ -59,7 +59,7 @@ var _ = Describe("Integration", func() {
 		url, err := url.Parse(server.URL + "/" + fileToFetch)
 		Expect(err).NotTo(HaveOccurred())
 
-		reader, _, err := downloader.Fetch(url, "the-cache-key", cacheddownloader.NoopTransform, make(chan struct{}))
+		reader, _, err := downloader.Fetch(url, "the-cache-key", make(chan struct{}))
 		Expect(err).NotTo(HaveOccurred())
 		defer reader.Close()
 
@@ -82,7 +82,7 @@ var _ = Describe("Integration", func() {
 		url, err := url.Parse(server.URL + "/" + fileToFetch)
 		Expect(err).NotTo(HaveOccurred())
 
-		dirPath, err := downloader.FetchAsDirectory(url, "tar-file-cache-key", make(chan struct{}))
+		dirPath, _, err := downloader.FetchAsDirectory(url, "tar-file-cache-key", make(chan struct{}))
 		Expect(err).NotTo(HaveOccurred())
 		defer func() {
 			err := downloader.CloseDirectory("tar-file-cache-key", dirPath)
