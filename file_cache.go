@@ -361,6 +361,12 @@ func extractTarToDirectory(sourcePath, destinationDir string) error {
 		default:
 			// handle normal file
 			fullpath := filepath.Join(destinationDir, filename)
+
+			err := os.MkdirAll(filepath.Dir(fullpath), 0777)
+			if err != nil {
+				return err
+			}
+
 			writer, err := os.Create(fullpath)
 
 			if err != nil {

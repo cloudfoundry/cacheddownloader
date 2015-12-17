@@ -670,7 +670,7 @@ func createArchive(filename, sampleData string) *os.File {
 		Type       byte
 		Mode       int64
 	}{
-		{"readme.txt", "This archive contains some text files.", tar.TypeReg, 0600},
+		{"bin/readme.txt", "This archive contains some text files.", tar.TypeReg, 0600},
 		{"diego.txt", "Diego names:\nVizzini\nGeoffrey\nPrincess Buttercup\n", tar.TypeReg, 0600},
 		{"testdir", "", tar.TypeDir, 0766},
 		{"testdir/file.txt", sampleData, tar.TypeReg, 0600},
