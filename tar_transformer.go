@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 )
 
 var ErrUnknownArchiveFormat = errors.New("unknown archive format")
@@ -31,6 +32,10 @@ func TarTransform(source string, destination string) (int64, error) {
 
 	switch mime {
 	case "application/x-gzip":
+		gunzipPath, err := exec.LookPath("gunzip")
+		if err == nil {
+			return gunzipTarGZToTar(gunzipPath, source, destination)
+		}
 		return transformTarGZToTar(source, destination)
 
 	case "application/zip":
@@ -72,6 +77,7 @@ func transformTarGZToTar(path, destPath string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer dest.Close()
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -88,11 +94,6 @@ func transformTarGZToTar(path, destPath string) (int64, error) {
 		return 0, err
 	}
 
-	err = dest.Close()
-	if err != nil {
-		return 0, err
-	}
-
 	err = file.Close()
 	if err != nil {
 		return 0, err
@@ -104,6 +105,33 @@ func transformTarGZToTar(path, destPath string) (int64, error) {
 	}
 
 	return n, nil
+}
+
+func gunzipTarGZToTar(gunzipPath, path, destPath string) (int64, error) {
+	destFile, err := os.OpenFile(destPath, os.O_WRONLY, 0666)
+	if err != nil {
+		return 0, err
+	}
+	defer destFile.Close()
+
+	cmd := exec.Command(gunzipPath, "-c", path)
+	cmd.Stdout = destFile
+	err = cmd.Run()
+	if err != nil {
+		return 0, err
+	}
+
+	err = os.Remove(path)
+	if err != nil {
+		return 0, err
+	}
+
+	fileInfo, err := os.Stat(destPath)
+	if err != nil {
+		return 0, err
+	}
+
+	return fileInfo.Size(), nil
 }
 
 func transformZipToTar(path, destPath string) (int64, error) {

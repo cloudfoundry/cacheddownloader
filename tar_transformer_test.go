@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/cloudfoundry-incubator/cacheddownloader"
@@ -97,24 +98,67 @@ var _ = Describe("TarTransformer", func() {
 			test_helper.CreateTarGZArchive(sourcePath, archiveFiles)
 		})
 
-		It("does not error", func() {
-			Expect(transformErr).NotTo(HaveOccurred())
+		Context("when gunzip is not available on the PATH", func() {
+			var oldPATH string
+
+			BeforeEach(func() {
+				oldPATH = os.Getenv("PATH")
+				os.Setenv("PATH", "/dev/null")
+
+				_, err := exec.LookPath("gunzip")
+				Expect(err).To(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				os.Setenv("PATH", oldPATH)
+			})
+
+			It("does not error", func() {
+				Expect(transformErr).NotTo(HaveOccurred())
+			})
+
+			It("gzip uncompresses it to a .tar", func() {
+				verifyTarFile(destinationPath)
+			})
+
+			It("deletes the original file", func() {
+				_, err := os.Stat(sourcePath)
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns the correct number of bytes written", func() {
+				fi, err := os.Stat(destinationPath)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fi.Size()).To(Equal(transformedSize))
+			})
 		})
 
-		It("gzip uncompresses it to a .tar", func() {
-			verifyTarFile(destinationPath)
-		})
+		Context("when gunzip is available on the PATH", func() {
+			BeforeEach(func() {
+				_, err := exec.LookPath("gunzip")
+				Expect(err).NotTo(HaveOccurred())
+			})
 
-		It("deletes the original file", func() {
-			_, err := os.Stat(sourcePath)
-			Expect(err).To(HaveOccurred())
-		})
+			It("does not error", func() {
+				Expect(transformErr).NotTo(HaveOccurred())
+			})
 
-		It("returns the correct number of bytes written", func() {
-			fi, err := os.Stat(destinationPath)
-			Expect(err).NotTo(HaveOccurred())
+			It("gzip uncompresses it to a .tar", func() {
+				verifyTarFile(destinationPath)
+			})
 
-			Expect(fi.Size()).To(Equal(transformedSize))
+			It("deletes the original file", func() {
+				_, err := os.Stat(sourcePath)
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("returns the correct number of bytes written", func() {
+				fi, err := os.Stat(destinationPath)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fi.Size()).To(Equal(transformedSize))
+			})
 		})
 	})
 
