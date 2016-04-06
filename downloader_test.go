@@ -3,6 +3,8 @@ package cacheddownloader_test
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -40,7 +42,7 @@ var _ = Describe("Downloader", func() {
 
 	BeforeEach(func() {
 		testServer = nil
-		downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false)
+		downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false, nil)
 		lock = &sync.Mutex{}
 		cancelChan = make(chan struct{}, 0)
 	})
@@ -239,7 +241,7 @@ var _ = Describe("Downloader", func() {
 
 			BeforeEach(func() {
 				done = make(chan struct{}, 3)
-				downloader = cacheddownloader.NewDownloaderWithDeadline(1*time.Second, 30*time.Millisecond, 10, false)
+				downloader = cacheddownloader.NewDownloaderWithDeadline(1*time.Second, 30*time.Millisecond, 10, false, nil)
 
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					time.Sleep(100 * time.Millisecond)
@@ -366,6 +368,158 @@ var _ = Describe("Downloader", func() {
 				close(completeRequest)
 			})
 		})
+
+		Context("when using TLS", func() {
+			var (
+				expectedSize int64
+
+				downloadErr    error
+				downloadedFile string
+
+				downloadCachingInfo cacheddownloader.CachingInfoType
+
+				localhostCert = []byte(`-----BEGIN CERTIFICATE-----
+MIIBdzCCASOgAwIBAgIBADALBgkqhkiG9w0BAQUwEjEQMA4GA1UEChMHQWNtZSBD
+bzAeFw03MDAxMDEwMDAwMDBaFw00OTEyMzEyMzU5NTlaMBIxEDAOBgNVBAoTB0Fj
+bWUgQ28wWjALBgkqhkiG9w0BAQEDSwAwSAJBAN55NcYKZeInyTuhcCwFMhDHCmwa
+IUSdtXdcbItRB/yfXGBhiex00IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEA
+AaNoMGYwDgYDVR0PAQH/BAQDAgCkMBMGA1UdJQQMMAoGCCsGAQUFBwMBMA8GA1Ud
+EwEB/wQFMAMBAf8wLgYDVR0RBCcwJYILZXhhbXBsZS5jb22HBH8AAAGHEAAAAAAA
+AAAAAAAAAAAAAAEwCwYJKoZIhvcNAQEFA0EAAoQn/ytgqpiLcZu9XKbCJsJcvkgk
+Se6AbGXgSlq+ZCEVo0qIwSgeBqmsJxUu7NCSOwVJLYNEBO2DtIxoYVk+MA==
+-----END CERTIFICATE-----`)
+				localhostKey = []byte(`-----BEGIN RSA PRIVATE KEY-----
+MIIBPAIBAAJBAN55NcYKZeInyTuhcCwFMhDHCmwaIUSdtXdcbItRB/yfXGBhiex0
+0IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEAAQJBAQdUx66rfh8sYsgfdcvV
+NoafYpnEcB5s4m/vSVe6SU7dCK6eYec9f9wpT353ljhDUHq3EbmE4foNzJngh35d
+AekCIQDhRQG5Li0Wj8TM4obOnnXUXf1jRv0UkzE9AHWLG5q3AwIhAPzSjpYUDjVW
+MCUXgckTpKCuGwbJk7424Nb8bLzf3kllAiA5mUBgjfr/WtFSJdWcPQ4Zt9KTMNKD
+EUO0ukpTwEIl6wIhAMbGqZK3zAAFdq8DD2jPx+UJXnh0rnOkZBzDtJ6/iN69AiEA
+1Aq8MJgTaYsDQWyU/hDq5YkDJc9e9DSCvUIzqxQWMQE=
+-----END RSA PRIVATE KEY-----`)
+				wrongCA = []byte(`-----BEGIN CERTIFICATE-----
+MIIFATCCAuugAwIBAgIBATALBgkqhkiG9w0BAQswEjEQMA4GA1UEAxMHZGllZ29D
+QTAeFw0xNjAyMTYyMTU1MzNaFw0yNjAyMTYyMTU1NDZaMBIxEDAOBgNVBAMTB2Rp
+ZWdvQ0EwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC7N7lGx7QGqkMd
+wjqgkr09CPoV3HW+GL+YOPajf//CCo15t3mLu9Npv7O7ecb+g/6DxEOtHFpQBSbQ
+igzHZkdlBJEGknwH2bsZ4wcVT2vcv2XPAIMDrnT7VuF1S2XD7BJK3n6BeXkFsVPA
+OUjC/v0pM/rCFRId5CwtRD/0IHFC/qgEtFQx+zejXXEn1AJMzvNNJ3B0bd8VQGEX
+ppemZXS1QvTP7/j2h7fJjosyoL6+76k4mcoScmWFNJHKcG4qcAh8rdnDlw+hJ+5S
+z73CadYI2BTnlZ/fxEcsZ/kcteFSf0mFpMYX6vs9/us/rgGwjUNzg+JlzvF43TYY
+VQ+TRkFUYHhDv3xwuRHnPNe0Nm30esKpqvbSXtoS6jcnpHn9tMOU0+4NW4aEdy9s
+7l4lcGyih4qZfHbYTsRDk1Nrq5EzQbhlZSPC3nxMrLxXri7j22rVCY/Rj9IgAxwC
+R3KcCdADGJeNOw44bK/BsRrB+Hxs9yNpXc2V2dez+w3hKNuzyk7WydC3fgXxX6x8
+66xnlhFGor7fvM0OSMtGUBD16igh4ySdDiEMNUljqQ1DuMglT1eGdg+Kh+1YYWpz
+v3JkNTX96C80IivbZyunZ2CczFhW2HlGWZLwNKeuM0hxt6AmiEa+KJQkx73dfg3L
+tkDWWp9TXERPI/6Y2696INi0wElBUQIDAQABo2YwZDAOBgNVHQ8BAf8EBAMCAAYw
+EgYDVR0TAQH/BAgwBgEB/wIBADAdBgNVHQ4EFgQU5xGtUKEzsfGmk/Siqo4fgAMs
+TBwwHwYDVR0jBBgwFoAU5xGtUKEzsfGmk/Siqo4fgAMsTBwwCwYJKoZIhvcNAQEL
+A4ICAQBkWgWl2t5fd4PZ1abpSQNAtsb2lfkkpxcKw+Osn9MeGpcrZjP8XoVTxtUs
+GMpeVn2dUYY1sxkVgUZ0Epsgl7eZDK1jn6QfWIjltlHvDtJMh0OrxmdJUuHTGIHc
+lsI9NGQRUtbyFHmy6jwIF7q925OmPQ/A6Xgkb45VUJDGNwOMUL5I9LbdBXcjmx6F
+ZifEON3wxDBVMIAoS/mZYjP4zy2k1qE2FHoitwDccnCG5Wya+AHdZv/ZlfJcuMtU
+U82oyHOctH29BPwASs3E1HUKof6uxJI+Y1M2kBDeuDS7DWiTt3JIVCjewIIhyYYw
+uTPbQglqhqHr1RWohliDmKSroIil68s42An0fv9sUr0Btf4itKS1gTb4rNiKTZC/
+8sLKs+CA5MB+F8lCllGGFfv1RFiUZBQs9+YEE+ru+yJw39lHeZQsEUgHbLjbVHs1
+WFqiKTO8VKl1/eGwG0l9dI26qisIAa/I7kLjlqboKycGDmAAarsmcJBLPzS+ytiu
+hoxA/fLhSWJvPXbdGemXLWQGf5DLN/8QGB63Rjp9WC3HhwSoU0NvmNmHoh+AdRRT
+dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
+36hwbfc1Gh/8nKgFeLmPOlBfKncjTjL2FvBNap6a8tVHXO9FvQ==
+-----END CERTIFICATE-----`)
+			)
+
+			BeforeEach(func() {
+				testServer = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					bytesWritten, _ := fmt.Fprint(w, "Hello, client")
+					expectedSize = int64(bytesWritten)
+				}))
+
+				cert, err := tls.X509KeyPair(localhostCert, localhostKey)
+				Expect(err).NotTo(HaveOccurred())
+
+				testServer.TLS = &tls.Config{
+					Certificates: []tls.Certificate{cert},
+				}
+				testServer.StartTLS()
+			})
+
+			JustBeforeEach(func() {
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+			})
+
+			AfterEach(func() {
+				if downloadedFile != "" {
+					os.Remove(downloadedFile)
+				}
+			})
+
+			Context("and setting the correct CA", func() {
+				BeforeEach(func() {
+					caCertPool := x509.NewCertPool()
+					ok := caCertPool.AppendCertsFromPEM(localhostCert)
+					Expect(ok).To(BeTrue())
+					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false, caCertPool)
+				})
+
+				It("succeeds the download", func() {
+					Expect(downloadedFile).NotTo(BeEmpty())
+					Expect(downloadErr).NotTo(HaveOccurred())
+				})
+			})
+
+			Context("and setting the incorrect CA", func() {
+				BeforeEach(func() {
+					caCertPool := x509.NewCertPool()
+					ok := caCertPool.AppendCertsFromPEM(wrongCA)
+					Expect(ok).To(BeTrue())
+					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false, caCertPool)
+				})
+
+				It("fails the download", func() {
+					Expect(downloadedFile).To(BeEmpty())
+					Expect(downloadErr).To(HaveOccurred())
+				})
+			})
+
+			Context("and setting multiple CAs, including the correct one", func() {
+				BeforeEach(func() {
+					caCertPool := x509.NewCertPool()
+					ok := caCertPool.AppendCertsFromPEM(wrongCA)
+					Expect(ok).To(BeTrue())
+					ok = caCertPool.AppendCertsFromPEM(localhostCert)
+					Expect(ok).To(BeTrue())
+					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false, caCertPool)
+				})
+
+				It("succeeds the download", func() {
+					Expect(downloadedFile).NotTo(BeEmpty())
+					Expect(downloadErr).NotTo(HaveOccurred())
+				})
+			})
+
+			Context("and skipping certificate verification", func() {
+				BeforeEach(func() {
+					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, true, nil)
+				})
+
+				It("succeeds without doing checking certificate validity", func() {
+					Expect(downloadedFile).NotTo(BeEmpty())
+					Expect(downloadErr).NotTo(HaveOccurred())
+				})
+			})
+
+			Context("without any truested CAs", func() {
+				BeforeEach(func() {
+					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false, nil)
+				})
+
+				It("fails the download", func() {
+					Expect(downloadedFile).To(BeEmpty())
+					Expect(downloadErr).To(HaveOccurred())
+				})
+			})
+		})
 	})
 
 	Describe("Concurrent downloads", func() {
@@ -381,7 +535,7 @@ var _ = Describe("Downloader", func() {
 			barrier = make(chan interface{}, 1)
 			results = make(chan bool, 1)
 
-			downloader = cacheddownloader.NewDownloader(1*time.Second, 1, false)
+			downloader = cacheddownloader.NewDownloader(1*time.Second, 1, false, nil)
 
 			var err error
 			tempDir, err = ioutil.TempDir("", "temp-dl-dir")

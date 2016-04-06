@@ -2,6 +2,7 @@ package cacheddownloader
 
 import (
 	"crypto/md5"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -77,11 +78,11 @@ func (c CachingInfoType) Equal(other CachingInfoType) bool {
 
 // A transformer function can be used to do post-download
 // processing on the file before it is stored in the cache.
-func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, transformer CacheTransformer) *cachedDownloader {
+func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *x509.CertPool, transformer CacheTransformer) *cachedDownloader {
 	os.RemoveAll(cachedPath)
 	os.MkdirAll(cachedPath, 0770)
 	return &cachedDownloader{
-		downloader:   NewDownloader(downloadTimeout, maxConcurrentDownloads, skipSSLVerification),
+		downloader:   NewDownloader(downloadTimeout, maxConcurrentDownloads, skipSSLVerification, caCertPool),
 		uncachedPath: uncachedPath,
 		cache:        NewCache(cachedPath, maxSizeInBytes),
 		transformer:  transformer,

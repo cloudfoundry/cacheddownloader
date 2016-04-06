@@ -45,7 +45,7 @@ var _ = Describe("Integration", func() {
 		url, err = url.Parse(server.URL + "/file")
 		Expect(err).NotTo(HaveOccurred())
 
-		downloader = cacheddownloader.New(cachedPath, uncachedPath, cacheMaxSizeInBytes, downloadTimeout, 10, false, cacheddownloader.NoopTransform)
+		downloader = cacheddownloader.New(cachedPath, uncachedPath, cacheMaxSizeInBytes, downloadTimeout, 10, false, nil, cacheddownloader.NoopTransform)
 	})
 
 	AfterEach(func() {

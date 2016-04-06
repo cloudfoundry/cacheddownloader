@@ -2,6 +2,8 @@ package cacheddownloader_test
 
 import (
 	"crypto/md5"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -60,7 +62,7 @@ var _ = Describe("File cache", func() {
 
 		transformer = cacheddownloader.NoopTransform
 
-		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, transformer)
+		cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
 		server = ghttp.NewServer()
 
 		url, err = Url.Parse(server.URL() + "/my_file")
@@ -77,7 +79,7 @@ var _ = Describe("File cache", func() {
 	Describe("when the cache folder does not exist", func() {
 		It("should create it", func() {
 			os.RemoveAll(cachedPath)
-			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS, false, transformer)
+			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
 			_, err := os.Stat(cachedPath)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -87,7 +89,7 @@ var _ = Describe("File cache", func() {
 		It("should nuke that stuff", func() {
 			filename := filepath.Join(cachedPath, "last_nights_dinner")
 			ioutil.WriteFile(filename, []byte("leftovers"), 0666)
-			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS, false, transformer)
+			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
 			_, err := os.Stat(filename)
 			Expect(err).To(HaveOccurred())
 		})
@@ -204,7 +206,7 @@ var _ = Describe("File cache", func() {
 
 							return 100, err
 						}
-						cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, transformer)
+						cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
 					})
 
 					It("passes the download through the transformer", func() {
@@ -912,7 +914,7 @@ var _ = Describe("File cache", func() {
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 				))
 
-				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, cacheddownloader.TarTransform)
+				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, cacheddownloader.TarTransform)
 
 				fetchedFile, fetchedFileSize, fetchErr = cache.Fetch(url, cacheKey, cancelChan)
 				Expect(fetchErr).NotTo(HaveOccurred())
@@ -1032,7 +1034,7 @@ var _ = Describe("File cache", func() {
 
 			Context("then is fetched with Fetch", func() {
 				BeforeEach(func() {
-					cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, cacheddownloader.TarTransform)
+					cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, cacheddownloader.TarTransform)
 				})
 
 				JustBeforeEach(func() {
@@ -1057,6 +1059,60 @@ var _ = Describe("File cache", func() {
 					fetchedFile.Close()
 				})
 			})
+		})
+	})
+
+	Context("when passing a CA cert pool", func() {
+		var (
+			localhostCert = []byte(`-----BEGIN CERTIFICATE-----
+MIIBdzCCASOgAwIBAgIBADALBgkqhkiG9w0BAQUwEjEQMA4GA1UEChMHQWNtZSBD
+bzAeFw03MDAxMDEwMDAwMDBaFw00OTEyMzEyMzU5NTlaMBIxEDAOBgNVBAoTB0Fj
+bWUgQ28wWjALBgkqhkiG9w0BAQEDSwAwSAJBAN55NcYKZeInyTuhcCwFMhDHCmwa
+IUSdtXdcbItRB/yfXGBhiex00IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEA
+AaNoMGYwDgYDVR0PAQH/BAQDAgCkMBMGA1UdJQQMMAoGCCsGAQUFBwMBMA8GA1Ud
+EwEB/wQFMAMBAf8wLgYDVR0RBCcwJYILZXhhbXBsZS5jb22HBH8AAAGHEAAAAAAA
+AAAAAAAAAAAAAAEwCwYJKoZIhvcNAQEFA0EAAoQn/ytgqpiLcZu9XKbCJsJcvkgk
+Se6AbGXgSlq+ZCEVo0qIwSgeBqmsJxUu7NCSOwVJLYNEBO2DtIxoYVk+MA==
+-----END CERTIFICATE-----`)
+			localhostKey = []byte(`-----BEGIN RSA PRIVATE KEY-----
+MIIBPAIBAAJBAN55NcYKZeInyTuhcCwFMhDHCmwaIUSdtXdcbItRB/yfXGBhiex0
+0IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEAAQJBAQdUx66rfh8sYsgfdcvV
+NoafYpnEcB5s4m/vSVe6SU7dCK6eYec9f9wpT353ljhDUHq3EbmE4foNzJngh35d
+AekCIQDhRQG5Li0Wj8TM4obOnnXUXf1jRv0UkzE9AHWLG5q3AwIhAPzSjpYUDjVW
+MCUXgckTpKCuGwbJk7424Nb8bLzf3kllAiA5mUBgjfr/WtFSJdWcPQ4Zt9KTMNKD
+EUO0ukpTwEIl6wIhAMbGqZK3zAAFdq8DD2jPx+UJXnh0rnOkZBzDtJ6/iN69AiEA
+1Aq8MJgTaYsDQWyU/hDq5YkDJc9e9DSCvUIzqxQWMQE=
+-----END RSA PRIVATE KEY-----`)
+		)
+
+		It("uses it", func() {
+			server.Close()
+			server = ghttp.NewUnstartedServer()
+			cert, err := tls.X509KeyPair(localhostCert, localhostKey)
+			Expect(err).NotTo(HaveOccurred())
+
+			server.HTTPTestServer.TLS = &tls.Config{
+				Certificates: []tls.Certificate{cert},
+			}
+			server.HTTPTestServer.StartTLS()
+
+			header := http.Header{}
+			header.Set("ETag", "foo")
+			server.AppendHandlers(ghttp.CombineHandlers(
+				ghttp.VerifyRequest("GET", "/my_file"),
+				ghttp.RespondWith(http.StatusOK, "content", header),
+			))
+
+			caCertPool := x509.NewCertPool()
+			ok := caCertPool.AppendCertsFromPEM(localhostCert)
+			Expect(ok).To(BeTrue())
+
+			url, err = Url.Parse(server.URL() + "/my_file")
+			Expect(err).NotTo(HaveOccurred())
+
+			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS, false, caCertPool, transformer)
+			_, _, err = cache.Fetch(url, "", cancelChan)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
