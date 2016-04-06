@@ -14,6 +14,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/cloudfoundry/systemcerts"
 )
 
 const (
@@ -67,11 +69,16 @@ type Downloader struct {
 	concurrentDownloadBarrier chan struct{}
 }
 
-func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *x509.CertPool) *Downloader {
+func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool) *Downloader {
 	return NewDownloaderWithDeadline(timeout, 5*time.Second, maxConcurrentDownloads, skipSSLVerification, caCertPool)
 }
 
-func NewDownloaderWithDeadline(timeout time.Duration, deadline time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *x509.CertPool) *Downloader {
+func NewDownloaderWithDeadline(timeout time.Duration, deadline time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool) *Downloader {
+	var certPool *x509.CertPool
+	if caCertPool != nil {
+		certPool = caCertPool.AsX509CertPool()
+	}
+
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: func(netw, addr string) (net.Conn, error) {
@@ -87,7 +94,7 @@ func NewDownloaderWithDeadline(timeout time.Duration, deadline time.Duration, ma
 		},
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig: &tls.Config{
-			RootCAs:            caCertPool,
+			RootCAs:            certPool,
 			InsecureSkipVerify: skipSSLVerification,
 			MinVersion:         tls.VersionTLS10,
 		},

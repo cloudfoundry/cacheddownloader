@@ -3,7 +3,6 @@ package cacheddownloader_test
 import (
 	"crypto/md5"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cloudfoundry-incubator/cacheddownloader"
+	"github.com/cloudfoundry/systemcerts"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
@@ -1103,7 +1103,7 @@ EUO0ukpTwEIl6wIhAMbGqZK3zAAFdq8DD2jPx+UJXnh0rnOkZBzDtJ6/iN69AiEA
 				ghttp.RespondWith(http.StatusOK, "content", header),
 			))
 
-			caCertPool := x509.NewCertPool()
+			caCertPool := systemcerts.NewCertPool()
 			ok := caCertPool.AppendCertsFromPEM(localhostCert)
 			Expect(ok).To(BeTrue())
 

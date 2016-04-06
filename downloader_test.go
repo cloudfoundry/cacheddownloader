@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cloudfoundry-incubator/cacheddownloader"
+	"github.com/cloudfoundry/systemcerts"
 	"github.com/onsi/gomega/ghttp"
 
 	. "github.com/onsi/ginkgo"
@@ -456,7 +456,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			Context("and setting the correct CA", func() {
 				BeforeEach(func() {
-					caCertPool := x509.NewCertPool()
+					caCertPool := systemcerts.NewCertPool()
 					ok := caCertPool.AppendCertsFromPEM(localhostCert)
 					Expect(ok).To(BeTrue())
 					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false, caCertPool)
@@ -470,7 +470,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			Context("and setting the incorrect CA", func() {
 				BeforeEach(func() {
-					caCertPool := x509.NewCertPool()
+					caCertPool := systemcerts.NewCertPool()
 					ok := caCertPool.AppendCertsFromPEM(wrongCA)
 					Expect(ok).To(BeTrue())
 					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false, caCertPool)
@@ -484,7 +484,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			Context("and setting multiple CAs, including the correct one", func() {
 				BeforeEach(func() {
-					caCertPool := x509.NewCertPool()
+					caCertPool := systemcerts.NewCertPool()
 					ok := caCertPool.AppendCertsFromPEM(wrongCA)
 					Expect(ok).To(BeTrue())
 					ok = caCertPool.AppendCertsFromPEM(localhostCert)
