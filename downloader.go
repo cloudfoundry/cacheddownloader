@@ -45,19 +45,19 @@ func (e *DownloadCancelledError) Error() string {
 	return msg
 }
 
-type deadlineConn struct {
+type idleTimeoutConn struct {
 	Timeout time.Duration
 	net.Conn
 }
 
-func (c *deadlineConn) Read(b []byte) (n int, err error) {
+func (c *idleTimeoutConn) Read(b []byte) (n int, err error) {
 	if err = c.Conn.SetDeadline(time.Now().Add(c.Timeout)); err != nil {
 		return
 	}
 	return c.Conn.Read(b)
 }
 
-func (c *deadlineConn) Write(b []byte) (n int, err error) {
+func (c *idleTimeoutConn) Write(b []byte) (n int, err error) {
 	if err = c.Conn.SetDeadline(time.Now().Add(c.Timeout)); err != nil {
 		return
 	}
@@ -69,11 +69,11 @@ type Downloader struct {
 	concurrentDownloadBarrier chan struct{}
 }
 
-func NewDownloader(timeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool) *Downloader {
-	return NewDownloaderWithDeadline(timeout, 5*time.Second, maxConcurrentDownloads, skipSSLVerification, caCertPool)
+func NewDownloader(requestTimeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool) *Downloader {
+	return NewDownloaderWithIdleTimeout(requestTimeout, 10*time.Second, maxConcurrentDownloads, skipSSLVerification, caCertPool)
 }
 
-func NewDownloaderWithDeadline(timeout time.Duration, deadline time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool) *Downloader {
+func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool) *Downloader {
 	var certPool *x509.CertPool
 	if caCertPool != nil {
 		certPool = caCertPool.AsX509CertPool()
@@ -90,7 +90,7 @@ func NewDownloaderWithDeadline(timeout time.Duration, deadline time.Duration, ma
 				tc.SetKeepAlive(true)
 				tc.SetKeepAlivePeriod(30 * time.Second)
 			}
-			return &deadlineConn{deadline, c}, nil
+			return &idleTimeoutConn{idleTimeout, c}, nil
 		},
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig: &tls.Config{
@@ -103,7 +103,7 @@ func NewDownloaderWithDeadline(timeout time.Duration, deadline time.Duration, ma
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   timeout,
+		Timeout:   requestTimeout,
 	}
 
 	return &Downloader{

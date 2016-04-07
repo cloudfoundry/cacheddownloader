@@ -241,7 +241,7 @@ var _ = Describe("Downloader", func() {
 
 			BeforeEach(func() {
 				done = make(chan struct{}, 3)
-				downloader = cacheddownloader.NewDownloaderWithDeadline(1*time.Second, 30*time.Millisecond, 10, false, nil)
+				downloader = cacheddownloader.NewDownloaderWithIdleTimeout(1*time.Second, 30*time.Millisecond, 10, false, nil)
 
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					time.Sleep(100 * time.Millisecond)
