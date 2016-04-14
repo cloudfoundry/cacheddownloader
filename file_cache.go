@@ -157,7 +157,7 @@ func (c *FileCache) Add(cacheKey, sourcePath string, size int64, cachingInfo Cac
 	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.seq)
 	cachePath := filepath.Join(c.cachedPath, uniqueName)
 
-	err := replace(sourcePath, cachePath)
+	err := os.Rename(sourcePath, cachePath)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func (c *FileCache) AddDirectory(cacheKey, sourcePath string, size int64, cachin
 	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.seq)
 	cachePath := filepath.Join(c.cachedPath, uniqueName)
 
-	err := replace(sourcePath, cachePath)
+	err := os.Rename(sourcePath, cachePath)
 	if err != nil {
 		return "", err
 	}
