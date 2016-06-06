@@ -2,7 +2,6 @@ package cacheddownloader_test
 
 import (
 	"bytes"
-	"crypto/md5"
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
@@ -23,13 +22,8 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func md5HexEtag(content string) string {
-	contentHash := md5.New()
-	contentHash.Write([]byte(content))
-	return fmt.Sprintf(`"%x"`, contentHash.Sum(nil))
-}
-
 var _ = Describe("Downloader", func() {
+	var checksum cacheddownloader.ChecksumInfoType
 	var downloader *cacheddownloader.Downloader
 	var testServer *httptest.Server
 	var serverRequestUrls []string
@@ -80,7 +74,7 @@ var _ = Describe("Downloader", func() {
 
 			JustBeforeEach(func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 			})
 
 			Context("and contains a matching MD5 Hash in the Etag", func() {
@@ -94,8 +88,10 @@ var _ = Describe("Downloader", func() {
 						lock.Unlock()
 
 						msg := "Hello, client"
+						hexMsg, err := cacheddownloader.HexValue("md5", msg)
+						Expect(err).NotTo(HaveOccurred())
 						expectedCachingInfo = cacheddownloader.CachingInfoType{
-							ETag:         md5HexEtag(msg),
+							ETag:         hexMsg,
 							LastModified: "The 70s",
 						}
 						w.Header().Set("ETag", expectedCachingInfo.ETag)
@@ -195,7 +191,7 @@ var _ = Describe("Downloader", func() {
 				downloadedFiles := make(chan string)
 
 				go func() {
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					errs <- err
 					downloadedFiles <- downloadedFile
 				}()
@@ -216,7 +212,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 			})
@@ -230,7 +226,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 			})
@@ -259,7 +255,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					errs <- err
 				}()
 
@@ -270,28 +266,6 @@ var _ = Describe("Downloader", func() {
 				opErr, ok := uErr.Err.(*net.OpError)
 				Expect(ok).To(BeTrue())
 				Expect(opErr.Op).To(Equal("read"))
-			})
-		})
-
-		Context("when the download's ETag fails the checksum", func() {
-			BeforeEach(func() {
-				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					realMsg := "Hello, client"
-					incompleteMsg := "Hello, clien"
-
-					w.Header().Set("ETag", md5HexEtag(realMsg))
-
-					fmt.Fprint(w, incompleteMsg)
-				}))
-
-				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-			})
-
-			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
-				Expect(err.Error()).To(ContainSubstring("Checksum"))
-				Expect(downloadedFile).To(BeEmpty())
-				Expect(cachingInfo).To(BeZero())
 			})
 		})
 
@@ -310,7 +284,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 				Expect(cachingInfo).To(BeZero())
@@ -340,7 +314,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					errs <- err
 				}()
 
@@ -356,7 +330,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					errs <- err
 				}()
 
@@ -445,7 +419,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			JustBeforeEach(func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cancelChan)
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 			})
 
 			AfterEach(func() {
@@ -520,6 +494,69 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 				})
 			})
 		})
+
+		Context("when checksum info is provided", func() {
+			var msg string
+			BeforeEach(func() {
+				msg = "Hello, client"
+				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprint(w, msg)
+				}))
+				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
+			})
+
+			Context("when algorithm is invalid", func() {
+				It("should return an algorithm invalid error", func() {
+					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "wrong alg", Value: "some value"}
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("algorithm invalid"))
+					Expect(downloadedFile).To(BeEmpty())
+				})
+			})
+
+			Context("when the value is invalid", func() {
+				It("should return a checksum invalid error", func() {
+					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "md5", Value: "wrong value"}
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("checksum missing or invalid"))
+					Expect(downloadedFile).To(BeEmpty())
+				})
+			})
+
+			Context("when the checksum algorithm is supported", func() {
+				It("with an md5 checksum", func() {
+					hexMsg, err := cacheddownloader.HexValue("md5", msg)
+					Expect(err).NotTo(HaveOccurred())
+
+					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "md5", Value: hexMsg}
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(downloadedFile).NotTo(BeEmpty())
+				})
+
+				It("with a sha1 checksum", func() {
+					hexMsg, err := cacheddownloader.HexValue("sha1", msg)
+					Expect(err).NotTo(HaveOccurred())
+
+					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "sha1", Value: hexMsg}
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(downloadedFile).NotTo(BeEmpty())
+				})
+
+				It("with a sha256 checksum", func() {
+					hexMsg, err := cacheddownloader.HexValue("sha256", msg)
+					Expect(err).NotTo(HaveOccurred())
+
+					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "sha256", Value: hexMsg}
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(downloadedFile).NotTo(BeEmpty())
+				})
+			})
+		})
 	})
 
 	Describe("Concurrent downloads", func() {
@@ -575,6 +612,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 					return ioutil.TempFile(tempDir, "the-file")
 				},
 				cacheddownloader.CachingInfoType{},
+				checksum,
 				cancelChan,
 			)
 		}
@@ -644,7 +682,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 				})
 
 				It("should return that it did not download", func() {
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cachedInfo, cancelChan)
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cachedInfo, checksum, cancelChan)
 					Expect(downloadedFile).To(BeEmpty())
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -668,7 +706,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 				})
 
 				It("should download the file", func() {
-					downloadedFile, _, err = downloader.Download(serverUrl, createDestFile, cachedInfo, cancelChan)
+					downloadedFile, _, err = downloader.Download(serverUrl, createDestFile, cachedInfo, checksum, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 
 					info, err := os.Stat(downloadedFile)
@@ -695,7 +733,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 				})
 
 				It("should return false with an error", func() {
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cachedInfo, cancelChan)
+					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cachedInfo, checksum, cancelChan)
 					Expect(downloadedFile).To(BeEmpty())
 					Expect(err).To(HaveOccurred())
 				})

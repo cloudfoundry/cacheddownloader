@@ -1,18 +1,14 @@
 package cacheddownloader
 
 import (
-	"bytes"
-	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/cloudfoundry/systemcerts"
@@ -116,6 +112,7 @@ func (downloader *Downloader) Download(
 	url *url.URL,
 	createDestination func() (*os.File, error),
 	cachingInfoIn CachingInfoType,
+	checksum ChecksumInfoType,
 	cancelChan <-chan struct{},
 ) (path string, cachingInfoOut CachingInfoType, err error) {
 
@@ -132,13 +129,18 @@ func (downloader *Downloader) Download(
 	}()
 
 	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
-		path, cachingInfoOut, err = downloader.fetchToFile(url, createDestination, cachingInfoIn, cancelChan)
+		path, cachingInfoOut, err = downloader.fetchToFile(url, createDestination, cachingInfoIn, checksum, cancelChan)
 
 		if err == nil {
 			break
 		}
 
 		if _, ok := err.(*DownloadCancelledError); ok {
+			break
+		}
+
+		if _, ok := err.(*ChecksumFailedError); ok {
+			println("Checksum Failed!!!")
 			break
 		}
 	}
@@ -154,6 +156,7 @@ func (downloader *Downloader) fetchToFile(
 	url *url.URL,
 	createDestination func() (*os.File, error),
 	cachingInfoIn CachingInfoType,
+	checksum ChecksumInfoType,
 	cancelChan <-chan struct{},
 ) (string, CachingInfoType, error) {
 	var req *http.Request
@@ -237,11 +240,21 @@ func (downloader *Downloader) fetchToFile(
 		}
 	}()
 
-	hash := md5.New()
+	ioWriters := []io.Writer{destinationFile}
+
+	var checksumValidator *hashValidator
+
+	// if checksum data is provided, create the checksum validator
+	if checksum.Algorithm != "" || checksum.Value != "" {
+		checksumValidator, err = NewHashValidator(checksum.Algorithm)
+		if err != nil {
+			return "", CachingInfoType{}, err
+		}
+		ioWriters = append(ioWriters, checksumValidator.hash)
+	}
 
 	startTime = time.Now()
-
-	written, err := io.Copy(io.MultiWriter(destinationFile, hash), resp.Body)
+	written, err := io.Copy(io.MultiWriter(ioWriters...), resp.Body)
 	if err != nil {
 		select {
 		case <-cancelChan:
@@ -256,29 +269,13 @@ func (downloader *Downloader) fetchToFile(
 		LastModified: resp.Header.Get("Last-Modified"),
 	}
 
-	etagChecksum, ok := convertETagToChecksum(cachingInfoOut.ETag)
-
-	if ok && !bytes.Equal(etagChecksum, hash.Sum(nil)) {
-		err = fmt.Errorf("Download failed: Checksum mismatch")
-		return "", CachingInfoType{}, err
+	// validate checksum
+	if checksumValidator != nil {
+		err = checksumValidator.Validate(checksum.Value)
+		if err != nil {
+			return "", CachingInfoType{}, err
+		}
 	}
 
 	return destinationFile.Name(), cachingInfoOut, nil
-}
-
-// convertETagToChecksum returns true if ETag is a valid MD5 hash, so a checksum action was intended.
-// See here for our motivation: http://docs.aws.amazon.com/AmazonS3/latest/API/RESTCommonResponseHeaders.html
-func convertETagToChecksum(etag string) ([]byte, bool) {
-	etag = strings.Trim(etag, `"`)
-
-	if len(etag) != 32 {
-		return nil, false
-	}
-
-	c, err := hex.DecodeString(etag)
-	if err != nil {
-		return nil, false
-	}
-
-	return c, true
 }

@@ -10,11 +10,12 @@ import (
 )
 
 type FakeCachedDownloader struct {
-	FetchStub        func(urlToFetch *url.URL, cacheKey string, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error)
+	FetchStub        func(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error)
 	fetchMutex       sync.RWMutex
 	fetchArgsForCall []struct {
 		urlToFetch *url.URL
 		cacheKey   string
+		checksum   cacheddownloader.ChecksumInfoType
 		cancelChan <-chan struct{}
 	}
 	fetchReturns struct {
@@ -22,11 +23,12 @@ type FakeCachedDownloader struct {
 		result2 int64
 		result3 error
 	}
-	FetchAsDirectoryStub        func(urlToFetch *url.URL, cacheKey string, cancelChan <-chan struct{}) (dirPath string, size int64, err error)
+	FetchAsDirectoryStub        func(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (dirPath string, size int64, err error)
 	fetchAsDirectoryMutex       sync.RWMutex
 	fetchAsDirectoryArgsForCall []struct {
 		urlToFetch *url.URL
 		cacheKey   string
+		checksum   cacheddownloader.ChecksumInfoType
 		cancelChan <-chan struct{}
 	}
 	fetchAsDirectoryReturns struct {
@@ -45,16 +47,17 @@ type FakeCachedDownloader struct {
 	}
 }
 
-func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error) {
+func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error) {
 	fake.fetchMutex.Lock()
 	fake.fetchArgsForCall = append(fake.fetchArgsForCall, struct {
 		urlToFetch *url.URL
 		cacheKey   string
+		checksum   cacheddownloader.ChecksumInfoType
 		cancelChan <-chan struct{}
-	}{urlToFetch, cacheKey, cancelChan})
+	}{urlToFetch, cacheKey, checksum, cancelChan})
 	fake.fetchMutex.Unlock()
 	if fake.FetchStub != nil {
-		return fake.FetchStub(urlToFetch, cacheKey, cancelChan)
+		return fake.FetchStub(urlToFetch, cacheKey, checksum, cancelChan)
 	} else {
 		return fake.fetchReturns.result1, fake.fetchReturns.result2, fake.fetchReturns.result3
 	}
@@ -66,10 +69,10 @@ func (fake *FakeCachedDownloader) FetchCallCount() int {
 	return len(fake.fetchArgsForCall)
 }
 
-func (fake *FakeCachedDownloader) FetchArgsForCall(i int) (*url.URL, string, <-chan struct{}) {
+func (fake *FakeCachedDownloader) FetchArgsForCall(i int) (*url.URL, string, cacheddownloader.ChecksumInfoType, <-chan struct{}) {
 	fake.fetchMutex.RLock()
 	defer fake.fetchMutex.RUnlock()
-	return fake.fetchArgsForCall[i].urlToFetch, fake.fetchArgsForCall[i].cacheKey, fake.fetchArgsForCall[i].cancelChan
+	return fake.fetchArgsForCall[i].urlToFetch, fake.fetchArgsForCall[i].cacheKey, fake.fetchArgsForCall[i].checksum, fake.fetchArgsForCall[i].cancelChan
 }
 
 func (fake *FakeCachedDownloader) FetchReturns(result1 io.ReadCloser, result2 int64, result3 error) {
@@ -81,16 +84,17 @@ func (fake *FakeCachedDownloader) FetchReturns(result1 io.ReadCloser, result2 in
 	}{result1, result2, result3}
 }
 
-func (fake *FakeCachedDownloader) FetchAsDirectory(urlToFetch *url.URL, cacheKey string, cancelChan <-chan struct{}) (dirPath string, size int64, err error) {
+func (fake *FakeCachedDownloader) FetchAsDirectory(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (dirPath string, size int64, err error) {
 	fake.fetchAsDirectoryMutex.Lock()
 	fake.fetchAsDirectoryArgsForCall = append(fake.fetchAsDirectoryArgsForCall, struct {
 		urlToFetch *url.URL
 		cacheKey   string
+		checksum   cacheddownloader.ChecksumInfoType
 		cancelChan <-chan struct{}
-	}{urlToFetch, cacheKey, cancelChan})
+	}{urlToFetch, cacheKey, checksum, cancelChan})
 	fake.fetchAsDirectoryMutex.Unlock()
 	if fake.FetchAsDirectoryStub != nil {
-		return fake.FetchAsDirectoryStub(urlToFetch, cacheKey, cancelChan)
+		return fake.FetchAsDirectoryStub(urlToFetch, cacheKey, checksum, cancelChan)
 	} else {
 		return fake.fetchAsDirectoryReturns.result1, fake.fetchAsDirectoryReturns.result2, fake.fetchAsDirectoryReturns.result3
 	}
@@ -102,10 +106,10 @@ func (fake *FakeCachedDownloader) FetchAsDirectoryCallCount() int {
 	return len(fake.fetchAsDirectoryArgsForCall)
 }
 
-func (fake *FakeCachedDownloader) FetchAsDirectoryArgsForCall(i int) (*url.URL, string, <-chan struct{}) {
+func (fake *FakeCachedDownloader) FetchAsDirectoryArgsForCall(i int) (*url.URL, string, cacheddownloader.ChecksumInfoType, <-chan struct{}) {
 	fake.fetchAsDirectoryMutex.RLock()
 	defer fake.fetchAsDirectoryMutex.RUnlock()
-	return fake.fetchAsDirectoryArgsForCall[i].urlToFetch, fake.fetchAsDirectoryArgsForCall[i].cacheKey, fake.fetchAsDirectoryArgsForCall[i].cancelChan
+	return fake.fetchAsDirectoryArgsForCall[i].urlToFetch, fake.fetchAsDirectoryArgsForCall[i].cacheKey, fake.fetchAsDirectoryArgsForCall[i].checksum, fake.fetchAsDirectoryArgsForCall[i].cancelChan
 }
 
 func (fake *FakeCachedDownloader) FetchAsDirectoryReturns(result1 string, result2 int64, result3 error) {
