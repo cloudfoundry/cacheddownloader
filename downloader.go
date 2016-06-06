@@ -140,7 +140,6 @@ func (downloader *Downloader) Download(
 		}
 
 		if _, ok := err.(*ChecksumFailedError); ok {
-			println("Checksum Failed!!!")
 			break
 		}
 	}
