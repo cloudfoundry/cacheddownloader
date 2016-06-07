@@ -23,7 +23,6 @@ import (
 )
 
 var _ = Describe("Downloader", func() {
-	var checksum cacheddownloader.ChecksumInfoType
 	var downloader *cacheddownloader.Downloader
 	var testServer *httptest.Server
 	var serverRequestUrls []string
@@ -74,7 +73,7 @@ var _ = Describe("Downloader", func() {
 
 			JustBeforeEach(func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 			})
 
 			Context("and contains a matching MD5 Hash in the Etag", func() {
@@ -507,7 +506,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			Context("when algorithm is invalid", func() {
 				It("should return an algorithm invalid error", func() {
-					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "wrong alg", Value: "some value"}
+					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "wrong alg", Value: "some value"}
 					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).To(HaveOccurred())
 					Expect(err.Error()).To(ContainSubstring("algorithm invalid"))
@@ -517,7 +516,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			Context("when the value is invalid", func() {
 				It("should return a checksum invalid error", func() {
-					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "md5", Value: "wrong value"}
+					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "md5", Value: "wrong value"}
 					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).To(HaveOccurred())
 					Expect(err.Error()).To(ContainSubstring("checksum missing or invalid"))
@@ -530,7 +529,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 					hexMsg, err := cacheddownloader.HexValue("md5", msg)
 					Expect(err).NotTo(HaveOccurred())
 
-					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "md5", Value: hexMsg}
+					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "md5", Value: hexMsg}
 					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(downloadedFile).NotTo(BeEmpty())
@@ -540,7 +539,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 					hexMsg, err := cacheddownloader.HexValue("sha1", msg)
 					Expect(err).NotTo(HaveOccurred())
 
-					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "sha1", Value: hexMsg}
+					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "sha1", Value: hexMsg}
 					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(downloadedFile).NotTo(BeEmpty())
@@ -550,7 +549,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 					hexMsg, err := cacheddownloader.HexValue("sha256", msg)
 					Expect(err).NotTo(HaveOccurred())
 
-					checksum = cacheddownloader.ChecksumInfoType{Algorithm: "sha256", Value: hexMsg}
+					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "sha256", Value: hexMsg}
 					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(downloadedFile).NotTo(BeEmpty())
