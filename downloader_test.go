@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloudfoundry-incubator/cacheddownloader"
+	"code.cloudfoundry.org/cacheddownloader"
 	"github.com/cloudfoundry/systemcerts"
 	"github.com/onsi/gomega/ghttp"
 
@@ -55,8 +55,6 @@ var _ = Describe("Downloader", func() {
 
 		Context("when the download is successful", func() {
 			var (
-				expectedSize int64
-
 				downloadErr    error
 				downloadedFile string
 
@@ -96,8 +94,7 @@ var _ = Describe("Downloader", func() {
 						w.Header().Set("ETag", expectedCachingInfo.ETag)
 						w.Header().Set("Last-Modified", expectedCachingInfo.LastModified)
 
-						bytesWritten, _ := fmt.Fprint(w, msg)
-						expectedSize = int64(bytesWritten)
+						fmt.Fprint(w, msg)
 					}))
 				})
 
@@ -135,8 +132,7 @@ var _ = Describe("Downloader", func() {
 					expectedEtag = "not the hex you are looking for"
 					testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						w.Header().Set("ETag", expectedEtag)
-						bytesWritten, _ := fmt.Fprint(w, "Hello, client")
-						expectedSize = int64(bytesWritten)
+						fmt.Fprint(w, "Hello, client")
 					}))
 				})
 
@@ -153,8 +149,7 @@ var _ = Describe("Downloader", func() {
 			Context("and contains no Etag at all", func() {
 				BeforeEach(func() {
 					testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						bytesWritten, _ := fmt.Fprint(w, "Hello, client")
-						expectedSize = int64(bytesWritten)
+						fmt.Fprint(w, "Hello, client")
 					}))
 				})
 
@@ -344,12 +339,8 @@ var _ = Describe("Downloader", func() {
 
 		Context("when using TLS", func() {
 			var (
-				expectedSize int64
-
 				downloadErr    error
 				downloadedFile string
-
-				downloadCachingInfo cacheddownloader.CachingInfoType
 
 				localhostCert = []byte(`-----BEGIN CERTIFICATE-----
 MIIBdzCCASOgAwIBAgIBADALBgkqhkiG9w0BAQUwEjEQMA4GA1UEChMHQWNtZSBD
@@ -403,8 +394,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			BeforeEach(func() {
 				testServer = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					bytesWritten, _ := fmt.Fprint(w, "Hello, client")
-					expectedSize = int64(bytesWritten)
+					fmt.Fprint(w, "Hello, client")
 				}))
 
 				cert, err := tls.X509KeyPair(localhostCert, localhostKey)
@@ -418,7 +408,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			JustBeforeEach(func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+				downloadedFile, _, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 			})
 
 			AfterEach(func() {

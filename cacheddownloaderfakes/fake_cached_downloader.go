@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/cloudfoundry-incubator/cacheddownloader"
+	"code.cloudfoundry.org/cacheddownloader"
 )
 
 type FakeCachedDownloader struct {

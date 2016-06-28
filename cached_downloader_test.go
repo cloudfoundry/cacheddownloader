@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudfoundry-incubator/cacheddownloader"
+	"code.cloudfoundry.org/cacheddownloader"
 	"github.com/cloudfoundry/systemcerts"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -581,11 +581,9 @@ var _ = Describe("File cache", func() {
 	})
 
 	Describe("FetchAsDirectory", func() {
-		var cacheFilePath string
 		var returnedHeader http.Header
 
 		BeforeEach(func() {
-			cacheFilePath = filepath.Join(cachedPath, computeMd5(cacheKey))
 			returnedHeader = http.Header{}
 			returnedHeader.Set("ETag", "my-original-etag")
 		})
@@ -890,21 +888,18 @@ var _ = Describe("File cache", func() {
 	})
 
 	Describe("When doing a Fetch and then a FetchAsDirectory", func() {
-		var cacheFilePath string
 		var returnedHeader http.Header
 
 		BeforeEach(func() {
-			cacheFilePath = filepath.Join(cachedPath, computeMd5(cacheKey))
 			returnedHeader = http.Header{}
 			returnedHeader.Set("ETag", "my-original-etag")
 		})
 
 		Context("when the archive is fetched", func() {
 			var (
-				fetchedFile     io.ReadCloser
-				fetchedFileSize int64
-				fetchErr        error
-				status          int
+				fetchedFile io.ReadCloser
+				fetchErr    error
+				status      int
 			)
 
 			JustBeforeEach(func() {
@@ -917,7 +912,7 @@ var _ = Describe("File cache", func() {
 
 				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, cacheddownloader.TarTransform)
 
-				fetchedFile, fetchedFileSize, fetchErr = cache.Fetch(url, cacheKey, checksum, cancelChan)
+				fetchedFile, _, fetchErr = cache.Fetch(url, cacheKey, checksum, cancelChan)
 				Expect(fetchErr).NotTo(HaveOccurred())
 				Expect(fetchedFile).NotTo(BeNil())
 				Expect(ioutil.ReadAll(fetchedFile)).To(Equal(downloadContent))
@@ -1000,21 +995,18 @@ var _ = Describe("File cache", func() {
 	})
 
 	Describe("When doing a FetchAsDirectory and then a Fetch", func() {
-		var cacheFilePath string
 		var returnedHeader http.Header
 
 		BeforeEach(func() {
-			cacheFilePath = filepath.Join(cachedPath, computeMd5(cacheKey))
 			returnedHeader = http.Header{}
 			returnedHeader.Set("ETag", "my-original-etag")
 		})
 
 		Context("when the archive is fetched", func() {
 			var (
-				fetchedFile     io.ReadCloser
-				fetchedFileSize int64
-				fetchErr        error
-				status          int
+				fetchedFile io.ReadCloser
+				fetchErr    error
+				status      int
 			)
 
 			JustBeforeEach(func() {
@@ -1047,8 +1039,9 @@ var _ = Describe("File cache", func() {
 						ghttp.RespondWithPtr(&status, &downloadContent, returnedHeader),
 					))
 
-					fetchedFile, fetchedFileSize, fetchErr = cache.Fetch(url, cacheKey, checksum, cancelChan)
+					fetchedFile, _, fetchErr = cache.Fetch(url, cacheKey, checksum, cancelChan)
 				})
+
 				BeforeEach(func() {
 					downloadContent = createTarBuffer("test content", 0).Bytes()
 				})

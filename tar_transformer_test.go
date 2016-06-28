@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/cloudfoundry-incubator/cacheddownloader"
+	"code.cloudfoundry.org/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/pivotal-golang/archiver/extractor/test_helper"

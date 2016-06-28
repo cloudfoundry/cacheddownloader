@@ -4,7 +4,7 @@ import (
 	"crypto/md5"
 	"fmt"
 
-	"github.com/cloudfoundry-incubator/cacheddownloader"
+	"code.cloudfoundry.org/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )

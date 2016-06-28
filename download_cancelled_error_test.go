@@ -3,7 +3,7 @@ package cacheddownloader_test
 import (
 	"time"
 
-	"github.com/cloudfoundry-incubator/cacheddownloader"
+	"code.cloudfoundry.org/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
