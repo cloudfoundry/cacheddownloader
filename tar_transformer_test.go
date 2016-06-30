@@ -7,10 +7,10 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"code.cloudfoundry.org/archiver/extractor/test_helper"
 	"code.cloudfoundry.org/cacheddownloader"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/pivotal-golang/archiver/extractor/test_helper"
 )
 
 var _ = Describe("TarTransformer", func() {
