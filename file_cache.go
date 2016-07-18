@@ -21,59 +21,59 @@ var (
 )
 
 type FileCache struct {
-	cachedPath     string
-	maxSizeInBytes int64
-	entries        map[string]*fileCacheEntry
-	oldEntries     map[string]*fileCacheEntry
-	seq            uint64
+	CachedPath     string
+	MaxSizeInBytes int64
+	Entries        map[string]*FileCacheEntry
+	OldEntries     map[string]*FileCacheEntry
+	Seq            uint64
 }
 
-type fileCacheEntry struct {
-	size                  int64
-	access                time.Time
-	cachingInfo           CachingInfoType
-	filePath              string
-	expandedDirectoryPath string
-	inuseCount            int
+type FileCacheEntry struct {
+	Size                  int64
+	Access                time.Time
+	CachingInfo           CachingInfoType
+	FilePath              string
+	ExpandedDirectoryPath string
+	InuseCount            int
 }
 
 func NewCache(dir string, maxSizeInBytes int64) *FileCache {
 	return &FileCache{
-		cachedPath:     dir,
-		maxSizeInBytes: maxSizeInBytes,
-		entries:        map[string]*fileCacheEntry{},
-		oldEntries:     map[string]*fileCacheEntry{},
-		seq:            0,
+		CachedPath:     dir,
+		MaxSizeInBytes: maxSizeInBytes,
+		Entries:        map[string]*FileCacheEntry{},
+		OldEntries:     map[string]*FileCacheEntry{},
+		Seq:            0,
 	}
 }
 
-func newFileCacheEntry(cachePath string, size int64, cachingInfo CachingInfoType) *fileCacheEntry {
-	return &fileCacheEntry{
-		size:                  size,
-		filePath:              cachePath,
-		access:                time.Now(),
-		cachingInfo:           cachingInfo,
-		expandedDirectoryPath: "",
-		inuseCount:            1,
+func newFileCacheEntry(cachePath string, size int64, cachingInfo CachingInfoType) *FileCacheEntry {
+	return &FileCacheEntry{
+		Size:                  size,
+		FilePath:              cachePath,
+		Access:                time.Now(),
+		CachingInfo:           cachingInfo,
+		ExpandedDirectoryPath: "",
+		InuseCount:            1,
 	}
 }
 
-func (e *fileCacheEntry) incrementUse() {
-	e.inuseCount++
+func (e *FileCacheEntry) incrementUse() {
+	e.InuseCount++
 }
 
-func (e *fileCacheEntry) decrementUse() {
-	e.inuseCount--
-	count := e.inuseCount
+func (e *FileCacheEntry) decrementUse() {
+	e.InuseCount--
+	count := e.InuseCount
 
 	if count == 0 {
-		err := os.RemoveAll(e.filePath)
+		err := os.RemoveAll(e.FilePath)
 		if err != nil {
 			fmt.Errorf("Unable to delete cached file", err)
 		}
 
 		// if there is a directory we need to remove it as well
-		os.RemoveAll(e.expandedDirectoryPath)
+		os.RemoveAll(e.ExpandedDirectoryPath)
 		if err != nil {
 			fmt.Errorf("Unable to delete cached directory", err)
 		}
@@ -81,8 +81,8 @@ func (e *fileCacheEntry) decrementUse() {
 }
 
 // Can we change this to be an io.ReadCloser return
-func (e *fileCacheEntry) readCloser() (*CachedFile, error) {
-	f, err := os.Open(e.filePath)
+func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
+	f, err := os.Open(e.FilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -97,28 +97,28 @@ func (e *fileCacheEntry) readCloser() (*CachedFile, error) {
 	return readCloser, nil
 }
 
-func (e *fileCacheEntry) expandedDirectory() (string, error) {
+func (e *FileCacheEntry) expandedDirectory() (string, error) {
 	e.incrementUse()
 
 	// if it has not been extracted before expand it!
-	if e.expandedDirectoryPath == "" {
-		e.expandedDirectoryPath = e.filePath + ".d"
-		err := extractTarToDirectory(e.filePath, e.expandedDirectoryPath)
+	if e.ExpandedDirectoryPath == "" {
+		e.ExpandedDirectoryPath = e.FilePath + ".d"
+		err := extractTarToDirectory(e.FilePath, e.ExpandedDirectoryPath)
 		if err != nil {
 			return "", err
 		}
 	}
 
-	return e.expandedDirectoryPath, nil
+	return e.ExpandedDirectoryPath, nil
 }
 
 func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
 	lock.Lock()
 	defer lock.Unlock()
 
-	entry := c.entries[cacheKey]
-	if entry != nil && entry.expandedDirectoryPath == dirPath {
-		if entry.inuseCount == 1 {
+	entry := c.Entries[cacheKey]
+	if entry != nil && entry.ExpandedDirectoryPath == dirPath {
+		if entry.InuseCount == 1 {
 			// We don't think anybody is using this so throw an error
 			return AlreadyClosed
 		}
@@ -129,15 +129,15 @@ func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
 
 	// Key didn't match anything in the current cache, so
 	// check and clean up old entries
-	entry = c.oldEntries[cacheKey+dirPath]
+	entry = c.OldEntries[cacheKey+dirPath]
 	if entry == nil {
 		return EntryNotFound
 	}
 
 	entry.decrementUse()
-	if entry.inuseCount == 0 {
+	if entry.InuseCount == 0 {
 		// done with this old entry, so clean it up
-		delete(c.oldEntries, cacheKey+dirPath)
+		delete(c.OldEntries, cacheKey+dirPath)
 	}
 	return nil
 }
@@ -146,16 +146,16 @@ func (c *FileCache) Add(cacheKey, sourcePath string, size int64, cachingInfo Cac
 	lock.Lock()
 	defer lock.Unlock()
 
-	oldEntry := c.entries[cacheKey]
+	oldEntry := c.Entries[cacheKey]
 
 	if !c.makeRoom(size, "") {
 		//file does not fit in cache...
 		return nil, NotEnoughSpace
 	}
 
-	c.seq++
-	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.seq)
-	cachePath := filepath.Join(c.cachedPath, uniqueName)
+	c.Seq++
+	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.Seq)
+	cachePath := filepath.Join(c.CachedPath, uniqueName)
 
 	err := os.Rename(sourcePath, cachePath)
 	if err != nil {
@@ -163,7 +163,7 @@ func (c *FileCache) Add(cacheKey, sourcePath string, size int64, cachingInfo Cac
 	}
 
 	newEntry := newFileCacheEntry(cachePath, size, cachingInfo)
-	c.entries[cacheKey] = newEntry
+	c.Entries[cacheKey] = newEntry
 	if oldEntry != nil {
 		oldEntry.decrementUse()
 		c.updateOldEntries(cacheKey, oldEntry)
@@ -178,23 +178,23 @@ func (c *FileCache) AddDirectory(cacheKey, sourcePath string, size int64, cachin
 	// double the size when expanding to directories
 	newSize := 2 * size
 
-	oldEntry := c.entries[cacheKey]
+	oldEntry := c.Entries[cacheKey]
 
 	if !c.makeRoom(newSize, "") {
 		//file does not fit in cache...
 		return "", NotEnoughSpace
 	}
 
-	c.seq++
-	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.seq)
-	cachePath := filepath.Join(c.cachedPath, uniqueName)
+	c.Seq++
+	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.Seq)
+	cachePath := filepath.Join(c.CachedPath, uniqueName)
 
 	err := os.Rename(sourcePath, cachePath)
 	if err != nil {
 		return "", err
 	}
 	newEntry := newFileCacheEntry(cachePath, newSize, cachingInfo)
-	c.entries[cacheKey] = newEntry
+	c.Entries[cacheKey] = newEntry
 	if oldEntry != nil {
 		oldEntry.decrementUse()
 		c.updateOldEntries(cacheKey, oldEntry)
@@ -206,47 +206,47 @@ func (c *FileCache) Get(cacheKey string) (*CachedFile, CachingInfoType, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	entry := c.entries[cacheKey]
+	entry := c.Entries[cacheKey]
 	if entry == nil {
 		return nil, CachingInfoType{}, EntryNotFound
 	}
 
-	entry.access = time.Now()
+	entry.Access = time.Now()
 	readCloser, err := entry.readCloser()
 	if err != nil {
 		return nil, CachingInfoType{}, err
 	}
 
-	return readCloser, entry.cachingInfo, nil
+	return readCloser, entry.CachingInfo, nil
 }
 
 func (c *FileCache) GetDirectory(cacheKey string) (string, CachingInfoType, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	entry := c.entries[cacheKey]
+	entry := c.Entries[cacheKey]
 	if entry == nil {
 		return "", CachingInfoType{}, EntryNotFound
 	}
 
 	// Was it expanded before
-	if entry.expandedDirectoryPath == "" {
+	if entry.ExpandedDirectoryPath == "" {
 		// Do we have enough room to double the size?
-		if !c.makeRoom(entry.size, cacheKey) {
+		if !c.makeRoom(entry.Size, cacheKey) {
 			//file does not fit in cache...
 			return "", CachingInfoType{}, NotEnoughSpace
 		} else {
-			entry.size = entry.size * 2
+			entry.Size = entry.Size * 2
 		}
 	}
 
-	entry.access = time.Now()
+	entry.Access = time.Now()
 	dir, err := entry.expandedDirectory()
 	if err != nil {
 		return "", CachingInfoType{}, err
 	}
 
-	return dir, entry.cachingInfo, nil
+	return dir, entry.CachingInfo, nil
 }
 
 func (c *FileCache) Remove(cacheKey string) {
@@ -256,38 +256,38 @@ func (c *FileCache) Remove(cacheKey string) {
 }
 
 func (c *FileCache) remove(cacheKey string) {
-	entry := c.entries[cacheKey]
+	entry := c.Entries[cacheKey]
 	if entry != nil {
 		entry.decrementUse()
 		c.updateOldEntries(cacheKey, entry)
-		delete(c.entries, cacheKey)
+		delete(c.Entries, cacheKey)
 	}
 }
 
-func (c *FileCache) updateOldEntries(cacheKey string, entry *fileCacheEntry) {
+func (c *FileCache) updateOldEntries(cacheKey string, entry *FileCacheEntry) {
 	if entry != nil {
-		if entry.inuseCount > 0 && entry.expandedDirectoryPath != "" {
+		if entry.InuseCount > 0 && entry.ExpandedDirectoryPath != "" {
 			// put it in the oldEntries Cache since somebody may still be using the directory
-			c.oldEntries[cacheKey+entry.expandedDirectoryPath] = entry
+			c.OldEntries[cacheKey+entry.ExpandedDirectoryPath] = entry
 		} else {
 			// We need to remove it from oldEntries
-			delete(c.oldEntries, cacheKey+entry.expandedDirectoryPath)
+			delete(c.OldEntries, cacheKey+entry.ExpandedDirectoryPath)
 		}
 	}
 }
 
 func (c *FileCache) makeRoom(size int64, excludedCacheKey string) bool {
-	if size > c.maxSizeInBytes {
+	if size > c.MaxSizeInBytes {
 		return false
 	}
 
 	usedSpace := c.usedSpace()
-	for c.maxSizeInBytes < usedSpace+size {
-		var oldestEntry *fileCacheEntry
+	for c.MaxSizeInBytes < usedSpace+size {
+		var oldestEntry *FileCacheEntry
 		oldestAccessTime, oldestCacheKey := time.Now(), ""
-		for ck, f := range c.entries {
-			if f.access.Before(oldestAccessTime) && ck != excludedCacheKey {
-				oldestAccessTime = f.access
+		for ck, f := range c.Entries {
+			if f.Access.Before(oldestAccessTime) && ck != excludedCacheKey {
+				oldestAccessTime = f.Access
 				oldestEntry = f
 				oldestCacheKey = ck
 			}
@@ -298,7 +298,7 @@ func (c *FileCache) makeRoom(size int64, excludedCacheKey string) bool {
 			return false
 		}
 
-		usedSpace -= oldestEntry.size
+		usedSpace -= oldestEntry.Size
 		c.remove(oldestCacheKey)
 	}
 
@@ -307,8 +307,8 @@ func (c *FileCache) makeRoom(size int64, excludedCacheKey string) bool {
 
 func (c *FileCache) usedSpace() int64 {
 	space := int64(0)
-	for _, f := range c.entries {
-		space += f.size
+	for _, f := range c.Entries {
+		space += f.Size
 	}
 	return space
 }
