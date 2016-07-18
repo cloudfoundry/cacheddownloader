@@ -2,11 +2,13 @@ package cacheddownloader
 
 import (
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -38,6 +40,12 @@ type CachedDownloader interface {
 	// In this way, FetchAsDirectory and CloseDirectory should be treated as a pair of operations,
 	// and a process that calls FetchAsDirectory should make sure a corresponding CloseDirectory is eventually called.
 	CloseDirectory(cacheKey, directoryPath string) error
+
+	CacheLocation() string
+
+	SaveState() error
+
+	RecoverState() error
 }
 
 func NoopTransform(source, destination string) (int64, error) {
@@ -65,10 +73,11 @@ type ChecksumInfoType struct {
 }
 
 type cachedDownloader struct {
-	downloader   *Downloader
-	uncachedPath string
-	cache        *FileCache
-	transformer  CacheTransformer
+	downloader    *Downloader
+	uncachedPath  string
+	cache         *FileCache
+	transformer   CacheTransformer
+	cacheLocation string
 
 	lock       *sync.Mutex
 	inProgress map[string]chan struct{}
@@ -85,16 +94,39 @@ func (c CachingInfoType) Equal(other CachingInfoType) bool {
 // A transformer function can be used to do post-download
 // processing on the file before it is stored in the cache.
 func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool, transformer CacheTransformer) *cachedDownloader {
-	os.RemoveAll(cachedPath)
 	os.MkdirAll(cachedPath, 0770)
 	return &cachedDownloader{
-		downloader:   NewDownloader(downloadTimeout, maxConcurrentDownloads, skipSSLVerification, caCertPool),
-		uncachedPath: uncachedPath,
-		cache:        NewCache(cachedPath, maxSizeInBytes),
-		transformer:  transformer,
-		lock:         &sync.Mutex{},
-		inProgress:   map[string]chan struct{}{},
+		downloader:    NewDownloader(downloadTimeout, maxConcurrentDownloads, skipSSLVerification, caCertPool),
+		uncachedPath:  uncachedPath,
+		cache:         NewCache(cachedPath, maxSizeInBytes),
+		transformer:   transformer,
+		lock:          &sync.Mutex{},
+		inProgress:    map[string]chan struct{}{},
+		cacheLocation: filepath.Join(cachedPath, "saved_cache.json"),
 	}
+}
+
+func (c *cachedDownloader) SaveState() error {
+	json, err := json.Marshal(c.cache)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(c.cacheLocation, json, 0600)
+}
+
+func (c *cachedDownloader) RecoverState() error {
+	file, err := os.Open(c.cacheLocation)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	state := json.NewDecoder(file).Decode(c.cache)
+	return state
+}
+
+func (c *cachedDownloader) CacheLocation() string {
+	return c.cacheLocation
 }
 
 func (c *cachedDownloader) CloseDirectory(cacheKey, directoryPath string) error {

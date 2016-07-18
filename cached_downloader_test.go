@@ -87,12 +87,12 @@ var _ = Describe("File cache", func() {
 	})
 
 	Describe("when the cache folder has stuff in it", func() {
-		It("should nuke that stuff", func() {
+		It("should not nuke that stuff", func() {
 			filename := filepath.Join(cachedPath, "last_nights_dinner")
 			ioutil.WriteFile(filename, []byte("leftovers"), 0666)
 			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
 			_, err := os.Stat(filename)
-			Expect(err).To(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
@@ -986,7 +986,7 @@ var _ = Describe("File cache", func() {
 						fileInfo, err := os.Stat(fetchedDir)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(fileInfo.IsDir()).To(BeTrue())
-						Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
+						Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(3))
 						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 					})
 				})
@@ -1056,6 +1056,53 @@ var _ = Describe("File cache", func() {
 		})
 	})
 
+	Describe("SaveState", func() {
+		It("writes the cache to the persistent disk", func() {
+			err := cache.SaveState()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cache.CacheLocation()).To(BeARegularFile())
+		})
+	})
+
+	Describe("RecoverState", func() {
+		BeforeEach(func() {
+			fileContent := []byte("now you see it")
+			returnedHeader := http.Header{}
+			returnedHeader.Set("ETag", "my-original-etag")
+
+			server.AppendHandlers(ghttp.CombineHandlers(
+				ghttp.VerifyRequest("GET", "/my_file"),
+				ghttp.RespondWith(http.StatusOK, string(fileContent), returnedHeader),
+			))
+
+			server.AppendHandlers(ghttp.CombineHandlers(
+				ghttp.VerifyRequest("GET", "/my_file"),
+				ghttp.RespondWith(http.StatusNotModified, nil),
+			))
+
+			file, size, err := cache.Fetch(url, cacheKey, checksum, cancelChan)
+			defer file.Close()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(size).NotTo(BeZero())
+
+			err = cache.SaveState()
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("recovers the cache from a saved state file", func() {
+			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
+
+			err := cache.RecoverState()
+			Expect(err).NotTo(HaveOccurred())
+
+			file, downloadSize, err := cache.Fetch(url, cacheKey, checksum, cancelChan)
+			defer file.Close()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(downloadSize).To(BeEquivalentTo(0))
+		})
+	})
+
 	Context("when passing a CA cert pool", func() {
 		var (
 			localhostCert = []byte(`-----BEGIN CERTIFICATE-----
@@ -1068,6 +1115,7 @@ EwEB/wQFMAMBAf8wLgYDVR0RBCcwJYILZXhhbXBsZS5jb22HBH8AAAGHEAAAAAAA
 AAAAAAAAAAAAAAEwCwYJKoZIhvcNAQEFA0EAAoQn/ytgqpiLcZu9XKbCJsJcvkgk
 Se6AbGXgSlq+ZCEVo0qIwSgeBqmsJxUu7NCSOwVJLYNEBO2DtIxoYVk+MA==
 -----END CERTIFICATE-----`)
+
 			localhostKey = []byte(`-----BEGIN RSA PRIVATE KEY-----
 MIIBPAIBAAJBAN55NcYKZeInyTuhcCwFMhDHCmwaIUSdtXdcbItRB/yfXGBhiex0
 0IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEAAQJBAQdUx66rfh8sYsgfdcvV
