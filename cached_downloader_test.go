@@ -1075,11 +1075,6 @@ var _ = Describe("File cache", func() {
 				ghttp.RespondWith(http.StatusOK, string(fileContent), returnedHeader),
 			))
 
-			server.AppendHandlers(ghttp.CombineHandlers(
-				ghttp.VerifyRequest("GET", "/my_file"),
-				ghttp.RespondWith(http.StatusNotModified, nil),
-			))
-
 			file, size, err := cache.Fetch(url, cacheKey, checksum, cancelChan)
 			defer file.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -1089,7 +1084,79 @@ var _ = Describe("File cache", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
+		Context("when the state file does not exists", func() {
+			BeforeEach(func() {
+				Expect(os.RemoveAll(cachedPath)).To(Succeed())
+			})
+
+			It("does not return an error", func() {
+				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
+
+				err := cache.RecoverState()
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
+		Context("when additional files beyond the saved cache exists on disk", func() {
+			var (
+				extraFile string
+			)
+
+			BeforeEach(func() {
+				extraFile = filepath.Join(cachedPath, "dummy_file")
+				err := ioutil.WriteFile(extraFile, []byte("foo"), 755)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("should remove them", func() {
+				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
+				Expect(cache.RecoverState()).To(Succeed())
+				Expect(extraFile).NotTo(BeAnExistingFile())
+			})
+		})
+
+		Context("when the cache size changes", func() {
+			BeforeEach(func() {
+				returnedHeader := http.Header{}
+				returnedHeader.Set("ETag", "another-file-etag")
+				fileContent := "a file with lots of content"
+
+				server.AppendHandlers(ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/another_file"),
+					ghttp.RespondWith(http.StatusOK, string(fileContent), returnedHeader),
+				))
+
+				anotherFileUrl, err := Url.Parse(server.URL() + "/another_file")
+				Expect(err).NotTo(HaveOccurred())
+				file, _, err := cache.Fetch(anotherFileUrl, "another-file-cache-key", checksum, cancelChan)
+				Expect(err).NotTo(HaveOccurred())
+				defer file.Close()
+
+				Expect(cache.SaveState()).To(Succeed())
+
+				maxSizeInBytes = 32
+			})
+
+			It("should evict old entries from the cache", func() {
+				files, err := ioutil.ReadDir(cachedPath)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(files).To(HaveLen(3))
+
+				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
+				Expect(cache.RecoverState()).To(Succeed())
+
+				files, err = ioutil.ReadDir(cachedPath)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(files).To(HaveLen(1))
+			})
+		})
+
 		It("recovers the cache from a saved state file", func() {
+			server.AppendHandlers(ghttp.CombineHandlers(
+				ghttp.VerifyRequest("GET", "/my_file"),
+				ghttp.RespondWith(http.StatusNotModified, nil),
+			))
+
 			cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
 
 			err := cache.RecoverState()

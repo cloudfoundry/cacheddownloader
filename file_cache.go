@@ -22,7 +22,7 @@ var (
 
 type FileCache struct {
 	CachedPath     string
-	MaxSizeInBytes int64
+	maxSizeInBytes int64
 	Entries        map[string]*FileCacheEntry
 	OldEntries     map[string]*FileCacheEntry
 	Seq            uint64
@@ -34,13 +34,13 @@ type FileCacheEntry struct {
 	CachingInfo           CachingInfoType
 	FilePath              string
 	ExpandedDirectoryPath string
-	InuseCount            int
+	inuseCount            int
 }
 
 func NewCache(dir string, maxSizeInBytes int64) *FileCache {
 	return &FileCache{
 		CachedPath:     dir,
-		MaxSizeInBytes: maxSizeInBytes,
+		maxSizeInBytes: maxSizeInBytes,
 		Entries:        map[string]*FileCacheEntry{},
 		OldEntries:     map[string]*FileCacheEntry{},
 		Seq:            0,
@@ -54,17 +54,20 @@ func newFileCacheEntry(cachePath string, size int64, cachingInfo CachingInfoType
 		Access:                time.Now(),
 		CachingInfo:           cachingInfo,
 		ExpandedDirectoryPath: "",
-		InuseCount:            1,
+		inuseCount:            1,
 	}
 }
 
 func (e *FileCacheEntry) incrementUse() {
-	e.InuseCount++
+	e.inuseCount++
 }
 
 func (e *FileCacheEntry) decrementUse() {
-	e.InuseCount--
-	count := e.InuseCount
+	if e.inuseCount > 0 {
+		e.inuseCount--
+	}
+
+	count := e.inuseCount
 
 	if count == 0 {
 		err := os.RemoveAll(e.FilePath)
@@ -118,7 +121,7 @@ func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
 
 	entry := c.Entries[cacheKey]
 	if entry != nil && entry.ExpandedDirectoryPath == dirPath {
-		if entry.InuseCount == 1 {
+		if entry.inuseCount == 1 {
 			// We don't think anybody is using this so throw an error
 			return AlreadyClosed
 		}
@@ -135,7 +138,7 @@ func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
 	}
 
 	entry.decrementUse()
-	if entry.InuseCount == 0 {
+	if entry.inuseCount == 0 {
 		// done with this old entry, so clean it up
 		delete(c.OldEntries, cacheKey+dirPath)
 	}
@@ -266,7 +269,7 @@ func (c *FileCache) remove(cacheKey string) {
 
 func (c *FileCache) updateOldEntries(cacheKey string, entry *FileCacheEntry) {
 	if entry != nil {
-		if entry.InuseCount > 0 && entry.ExpandedDirectoryPath != "" {
+		if entry.inuseCount > 0 && entry.ExpandedDirectoryPath != "" {
 			// put it in the oldEntries Cache since somebody may still be using the directory
 			c.OldEntries[cacheKey+entry.ExpandedDirectoryPath] = entry
 		} else {
@@ -277,12 +280,12 @@ func (c *FileCache) updateOldEntries(cacheKey string, entry *FileCacheEntry) {
 }
 
 func (c *FileCache) makeRoom(size int64, excludedCacheKey string) bool {
-	if size > c.MaxSizeInBytes {
+	if size > c.maxSizeInBytes {
 		return false
 	}
 
 	usedSpace := c.usedSpace()
-	for c.MaxSizeInBytes < usedSpace+size {
+	for c.maxSizeInBytes < usedSpace+size {
 		var oldestEntry *FileCacheEntry
 		oldestAccessTime, oldestCacheKey := time.Now(), ""
 		for ck, f := range c.Entries {

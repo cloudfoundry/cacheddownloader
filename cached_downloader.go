@@ -118,11 +118,50 @@ func (c *cachedDownloader) SaveState() error {
 func (c *cachedDownloader) RecoverState() error {
 	file, err := os.Open(c.cacheLocation)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return err
 	}
 	defer file.Close()
-	state := json.NewDecoder(file).Decode(c.cache)
-	return state
+
+	err = json.NewDecoder(file).Decode(c.cache)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range c.cache.Entries {
+		entry.inuseCount = 0
+	}
+
+	trackedFiles := map[string]struct{}{}
+	for _, entry := range c.cache.Entries {
+		trackedFiles[entry.FilePath] = struct{}{}
+	}
+
+	files, err := ioutil.ReadDir(c.cache.CachedPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	for _, file := range files {
+		path := filepath.Join(c.cache.CachedPath, file.Name())
+		if _, ok := trackedFiles[path]; ok {
+			continue
+		}
+		// this could be the extracted directory, so keep it as well
+		if _, ok := trackedFiles[path+".d"]; ok {
+			continue
+		}
+
+		err = os.Remove(path)
+		if err != nil {
+			return err
+		}
+	}
+
+	c.cache.makeRoom(0, "")
+	return err
 }
 
 func (c *cachedDownloader) CacheLocation() string {

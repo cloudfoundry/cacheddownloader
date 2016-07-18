@@ -45,6 +45,26 @@ type FakeCachedDownloader struct {
 	closeDirectoryReturns struct {
 		result1 error
 	}
+	CacheLocationStub        func() string
+	cacheLocationMutex       sync.RWMutex
+	cacheLocationArgsForCall []struct{}
+	cacheLocationReturns     struct {
+		result1 string
+	}
+	SaveStateStub        func() error
+	saveStateMutex       sync.RWMutex
+	saveStateArgsForCall []struct{}
+	saveStateReturns     struct {
+		result1 error
+	}
+	RecoverStateStub        func() error
+	recoverStateMutex       sync.RWMutex
+	recoverStateArgsForCall []struct{}
+	recoverStateReturns     struct {
+		result1 error
+	}
+	invocations      map[string][][]interface{}
+	invocationsMutex sync.RWMutex
 }
 
 func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error) {
@@ -55,6 +75,7 @@ func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, ch
 		checksum   cacheddownloader.ChecksumInfoType
 		cancelChan <-chan struct{}
 	}{urlToFetch, cacheKey, checksum, cancelChan})
+	fake.recordInvocation("Fetch", []interface{}{urlToFetch, cacheKey, checksum, cancelChan})
 	fake.fetchMutex.Unlock()
 	if fake.FetchStub != nil {
 		return fake.FetchStub(urlToFetch, cacheKey, checksum, cancelChan)
@@ -92,6 +113,7 @@ func (fake *FakeCachedDownloader) FetchAsDirectory(urlToFetch *url.URL, cacheKey
 		checksum   cacheddownloader.ChecksumInfoType
 		cancelChan <-chan struct{}
 	}{urlToFetch, cacheKey, checksum, cancelChan})
+	fake.recordInvocation("FetchAsDirectory", []interface{}{urlToFetch, cacheKey, checksum, cancelChan})
 	fake.fetchAsDirectoryMutex.Unlock()
 	if fake.FetchAsDirectoryStub != nil {
 		return fake.FetchAsDirectoryStub(urlToFetch, cacheKey, checksum, cancelChan)
@@ -127,6 +149,7 @@ func (fake *FakeCachedDownloader) CloseDirectory(cacheKey string, directoryPath 
 		cacheKey      string
 		directoryPath string
 	}{cacheKey, directoryPath})
+	fake.recordInvocation("CloseDirectory", []interface{}{cacheKey, directoryPath})
 	fake.closeDirectoryMutex.Unlock()
 	if fake.CloseDirectoryStub != nil {
 		return fake.CloseDirectoryStub(cacheKey, directoryPath)
@@ -152,6 +175,111 @@ func (fake *FakeCachedDownloader) CloseDirectoryReturns(result1 error) {
 	fake.closeDirectoryReturns = struct {
 		result1 error
 	}{result1}
+}
+
+func (fake *FakeCachedDownloader) CacheLocation() string {
+	fake.cacheLocationMutex.Lock()
+	fake.cacheLocationArgsForCall = append(fake.cacheLocationArgsForCall, struct{}{})
+	fake.recordInvocation("CacheLocation", []interface{}{})
+	fake.cacheLocationMutex.Unlock()
+	if fake.CacheLocationStub != nil {
+		return fake.CacheLocationStub()
+	} else {
+		return fake.cacheLocationReturns.result1
+	}
+}
+
+func (fake *FakeCachedDownloader) CacheLocationCallCount() int {
+	fake.cacheLocationMutex.RLock()
+	defer fake.cacheLocationMutex.RUnlock()
+	return len(fake.cacheLocationArgsForCall)
+}
+
+func (fake *FakeCachedDownloader) CacheLocationReturns(result1 string) {
+	fake.CacheLocationStub = nil
+	fake.cacheLocationReturns = struct {
+		result1 string
+	}{result1}
+}
+
+func (fake *FakeCachedDownloader) SaveState() error {
+	fake.saveStateMutex.Lock()
+	fake.saveStateArgsForCall = append(fake.saveStateArgsForCall, struct{}{})
+	fake.recordInvocation("SaveState", []interface{}{})
+	fake.saveStateMutex.Unlock()
+	if fake.SaveStateStub != nil {
+		return fake.SaveStateStub()
+	} else {
+		return fake.saveStateReturns.result1
+	}
+}
+
+func (fake *FakeCachedDownloader) SaveStateCallCount() int {
+	fake.saveStateMutex.RLock()
+	defer fake.saveStateMutex.RUnlock()
+	return len(fake.saveStateArgsForCall)
+}
+
+func (fake *FakeCachedDownloader) SaveStateReturns(result1 error) {
+	fake.SaveStateStub = nil
+	fake.saveStateReturns = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FakeCachedDownloader) RecoverState() error {
+	fake.recoverStateMutex.Lock()
+	fake.recoverStateArgsForCall = append(fake.recoverStateArgsForCall, struct{}{})
+	fake.recordInvocation("RecoverState", []interface{}{})
+	fake.recoverStateMutex.Unlock()
+	if fake.RecoverStateStub != nil {
+		return fake.RecoverStateStub()
+	} else {
+		return fake.recoverStateReturns.result1
+	}
+}
+
+func (fake *FakeCachedDownloader) RecoverStateCallCount() int {
+	fake.recoverStateMutex.RLock()
+	defer fake.recoverStateMutex.RUnlock()
+	return len(fake.recoverStateArgsForCall)
+}
+
+func (fake *FakeCachedDownloader) RecoverStateReturns(result1 error) {
+	fake.RecoverStateStub = nil
+	fake.recoverStateReturns = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FakeCachedDownloader) Invocations() map[string][][]interface{} {
+	fake.invocationsMutex.RLock()
+	defer fake.invocationsMutex.RUnlock()
+	fake.fetchMutex.RLock()
+	defer fake.fetchMutex.RUnlock()
+	fake.fetchAsDirectoryMutex.RLock()
+	defer fake.fetchAsDirectoryMutex.RUnlock()
+	fake.closeDirectoryMutex.RLock()
+	defer fake.closeDirectoryMutex.RUnlock()
+	fake.cacheLocationMutex.RLock()
+	defer fake.cacheLocationMutex.RUnlock()
+	fake.saveStateMutex.RLock()
+	defer fake.saveStateMutex.RUnlock()
+	fake.recoverStateMutex.RLock()
+	defer fake.recoverStateMutex.RUnlock()
+	return fake.invocations
+}
+
+func (fake *FakeCachedDownloader) recordInvocation(key string, args []interface{}) {
+	fake.invocationsMutex.Lock()
+	defer fake.invocationsMutex.Unlock()
+	if fake.invocations == nil {
+		fake.invocations = map[string][][]interface{}{}
+	}
+	if fake.invocations[key] == nil {
+		fake.invocations[key] = [][]interface{}{}
+	}
+	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
 var _ cacheddownloader.CachedDownloader = new(FakeCachedDownloader)
