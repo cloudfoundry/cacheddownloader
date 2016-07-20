@@ -45,12 +45,6 @@ type FakeCachedDownloader struct {
 	closeDirectoryReturns struct {
 		result1 error
 	}
-	CacheLocationStub        func() string
-	cacheLocationMutex       sync.RWMutex
-	cacheLocationArgsForCall []struct{}
-	cacheLocationReturns     struct {
-		result1 string
-	}
 	SaveStateStub        func() error
 	saveStateMutex       sync.RWMutex
 	saveStateArgsForCall []struct{}
@@ -177,31 +171,6 @@ func (fake *FakeCachedDownloader) CloseDirectoryReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakeCachedDownloader) CacheLocation() string {
-	fake.cacheLocationMutex.Lock()
-	fake.cacheLocationArgsForCall = append(fake.cacheLocationArgsForCall, struct{}{})
-	fake.recordInvocation("CacheLocation", []interface{}{})
-	fake.cacheLocationMutex.Unlock()
-	if fake.CacheLocationStub != nil {
-		return fake.CacheLocationStub()
-	} else {
-		return fake.cacheLocationReturns.result1
-	}
-}
-
-func (fake *FakeCachedDownloader) CacheLocationCallCount() int {
-	fake.cacheLocationMutex.RLock()
-	defer fake.cacheLocationMutex.RUnlock()
-	return len(fake.cacheLocationArgsForCall)
-}
-
-func (fake *FakeCachedDownloader) CacheLocationReturns(result1 string) {
-	fake.CacheLocationStub = nil
-	fake.cacheLocationReturns = struct {
-		result1 string
-	}{result1}
-}
-
 func (fake *FakeCachedDownloader) SaveState() error {
 	fake.saveStateMutex.Lock()
 	fake.saveStateArgsForCall = append(fake.saveStateArgsForCall, struct{}{})
@@ -261,8 +230,6 @@ func (fake *FakeCachedDownloader) Invocations() map[string][][]interface{} {
 	defer fake.fetchAsDirectoryMutex.RUnlock()
 	fake.closeDirectoryMutex.RLock()
 	defer fake.closeDirectoryMutex.RUnlock()
-	fake.cacheLocationMutex.RLock()
-	defer fake.cacheLocationMutex.RUnlock()
 	fake.saveStateMutex.RLock()
 	defer fake.saveStateMutex.RUnlock()
 	fake.recoverStateMutex.RLock()

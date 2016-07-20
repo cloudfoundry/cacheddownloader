@@ -20,7 +20,7 @@ import (
 // a noop transformer returns the given path and its detected size.
 type CacheTransformer func(source, destination string) (newSize int64, err error)
 
-//go:generate counterfeiter . CachedDownloader
+//go:generate counterfeiter -o cacheddownloaderfakes/fake_cached_downloader.go . CachedDownloader
 
 // CachedDownloader is responsible for downloading and caching files and maintaining reference counts for each cache entry.
 // Entries in the cache with no active references are ejected from the cache when new space is needed.
@@ -41,10 +41,12 @@ type CachedDownloader interface {
 	// and a process that calls FetchAsDirectory should make sure a corresponding CloseDirectory is eventually called.
 	CloseDirectory(cacheKey, directoryPath string) error
 
-	CacheLocation() string
-
+	// SaveState writes the current state of the cache metadata to a file so that it can be recovered
+	// later. This should be called on process shutdown.
 	SaveState() error
 
+	// RecoverState checks to see if a state file exists (from a previous SaveState call), and restores
+	// the cache state from that information if such a file exists. This should be called on startup.
 	RecoverState() error
 }
 
@@ -154,7 +156,7 @@ func (c *cachedDownloader) RecoverState() error {
 			continue
 		}
 
-		err = os.Remove(path)
+		err = os.RemoveAll(path)
 		if err != nil {
 			return err
 		}
@@ -162,10 +164,6 @@ func (c *cachedDownloader) RecoverState() error {
 
 	c.cache.makeRoom(0, "")
 	return err
-}
-
-func (c *cachedDownloader) CacheLocation() string {
-	return c.cacheLocation
 }
 
 func (c *cachedDownloader) CloseDirectory(cacheKey, directoryPath string) error {

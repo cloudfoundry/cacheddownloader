@@ -1060,7 +1060,8 @@ var _ = Describe("File cache", func() {
 		It("writes the cache to the persistent disk", func() {
 			err := cache.SaveState()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cache.CacheLocation()).To(BeARegularFile())
+			saveStateFile := filepath.Join(cachedPath, "saved_cache.json")
+			Expect(saveStateFile).To(BeARegularFile())
 		})
 	})
 
@@ -1084,7 +1085,7 @@ var _ = Describe("File cache", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		Context("when the state file does not exists", func() {
+		Context("when the state file does not exist", func() {
 			BeforeEach(func() {
 				Expect(os.RemoveAll(cachedPath)).To(Succeed())
 			})
@@ -1097,21 +1098,34 @@ var _ = Describe("File cache", func() {
 			})
 		})
 
-		Context("when additional files beyond the saved cache exists on disk", func() {
+		Context("when additional files beyond the saved cache exist on disk", func() {
 			var (
 				extraFile string
+				extraDir  string
 			)
 
 			BeforeEach(func() {
 				extraFile = filepath.Join(cachedPath, "dummy_file")
-				err := ioutil.WriteFile(extraFile, []byte("foo"), 755)
+				err := ioutil.WriteFile(extraFile, []byte("foo"), 0755)
+				Expect(err).NotTo(HaveOccurred())
+
+				extraDir = filepath.Join(cachedPath, "dummy_dir/nested_dummy_dir")
+				err = os.MkdirAll(extraDir, 0755)
+				Expect(err).NotTo(HaveOccurred())
+				err = ioutil.WriteFile(filepath.Join(extraDir, "file"), []byte("foo"), 0755)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
-			It("should remove them", func() {
+			It("should remove regular files", func() {
 				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
 				Expect(cache.RecoverState()).To(Succeed())
 				Expect(extraFile).NotTo(BeAnExistingFile())
+			})
+
+			It("should remove directories", func() {
+				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
+				Expect(cache.RecoverState()).To(Succeed())
+				Expect(extraDir).NotTo(BeADirectory())
 			})
 		})
 
