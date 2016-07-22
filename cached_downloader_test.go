@@ -1182,6 +1182,39 @@ var _ = Describe("File cache", func() {
 
 			Expect(downloadSize).To(BeEquivalentTo(0))
 		})
+
+		Context("when a tar file is fetched", func() {
+			var (
+				path string
+			)
+
+			BeforeEach(func() {
+				downloadContent = createTarBuffer("test content", 0).Bytes()
+				url, err = Url.Parse(server.URL() + "/my_tar_file")
+				Expect(err).NotTo(HaveOccurred())
+				cacheKey = "my-tar-file-cache-key"
+			})
+
+			JustBeforeEach(func() {
+				returnedHeader := http.Header{}
+				returnedHeader.Set("ETag", "tar-file-etag")
+				server.AppendHandlers(ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/my_tar_file"),
+					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
+				))
+				var err error
+				path, _, err = cache.FetchAsDirectory(url, cacheKey, checksum, cancelChan)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(cache.CloseDirectory(cacheKey, path)).To(Succeed())
+				Expect(cache.SaveState()).To(Succeed())
+			})
+
+			It("leaves extracted directories in the cache", func() {
+				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
+				Expect(cache.RecoverState()).To(Succeed())
+				Expect(path).To(BeADirectory())
+			})
+		})
 	})
 
 	Context("when passing a CA cert pool", func() {

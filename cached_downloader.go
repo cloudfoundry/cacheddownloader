@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -137,6 +138,7 @@ func (c *cachedDownloader) RecoverState() error {
 	}
 
 	trackedFiles := map[string]struct{}{}
+
 	for _, entry := range c.cache.Entries {
 		trackedFiles[entry.FilePath] = struct{}{}
 	}
@@ -151,7 +153,9 @@ func (c *cachedDownloader) RecoverState() error {
 		if _, ok := trackedFiles[path]; ok {
 			continue
 		}
+
 		// this could be the extracted directory, so keep it as well
+		path = strings.TrimSuffix(path, ".d")
 		if _, ok := trackedFiles[path+".d"]; ok {
 			continue
 		}
