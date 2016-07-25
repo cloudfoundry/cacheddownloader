@@ -66,7 +66,7 @@ type Downloader struct {
 }
 
 func NewDownloader(requestTimeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool) *Downloader {
-	return NewDownloaderWithIdleTimeout(requestTimeout, 10*time.Second, maxConcurrentDownloads, skipSSLVerification, caCertPool)
+	return NewDownloaderWithIdleTimeout(requestTimeout, time.Minute, maxConcurrentDownloads, skipSSLVerification, caCertPool)
 }
 
 func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool) *Downloader {
