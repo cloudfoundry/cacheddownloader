@@ -126,9 +126,14 @@ func (c *cachedDownloader) RecoverState() error {
 		}
 		return err
 	}
-	defer file.Close()
 
 	err = json.NewDecoder(file).Decode(c.cache)
+	if err != nil {
+		file.Close()
+		return err
+	}
+
+	err = file.Close()
 	if err != nil {
 		return err
 	}

@@ -137,7 +137,9 @@ var _ = Describe("TarTransformer", func() {
 		Context("when gunzip is available on the PATH", func() {
 			BeforeEach(func() {
 				_, err := exec.LookPath("gunzip")
-				Expect(err).NotTo(HaveOccurred())
+				if err != nil {
+					Skip("skipping gunzip tests because gunzip was not found on the PATH")
+				}
 			})
 
 			It("does not error", func() {
