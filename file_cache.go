@@ -72,13 +72,13 @@ func (e *FileCacheEntry) decrementUse() {
 	if count == 0 {
 		err := os.RemoveAll(e.FilePath)
 		if err != nil {
-			fmt.Errorf("Unable to delete cached file", err)
+			fmt.Fprintln(os.Stderr, "Unable to delete cached file", err)
 		}
 
 		// if there is a directory we need to remove it as well
-		os.RemoveAll(e.ExpandedDirectoryPath)
+		err = os.RemoveAll(e.ExpandedDirectoryPath)
 		if err != nil {
-			fmt.Errorf("Unable to delete cached directory", err)
+			fmt.Fprintln(os.Stderr, "Unable to delete cached file", err)
 		}
 	}
 }
