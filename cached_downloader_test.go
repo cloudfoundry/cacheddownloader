@@ -9,6 +9,7 @@ import (
 	"net/http"
 	Url "net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -1127,6 +1128,20 @@ var _ = Describe("File cache", func() {
 				Expect(cache.RecoverState()).To(Succeed())
 				Expect(extraDir).NotTo(BeADirectory())
 			})
+
+			Context("and saved_cache.json is missing", func() {
+				BeforeEach(func() {
+					err := os.Remove(path.Join(cachedPath, "saved_cache.json"))
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("removes all entries in the cached path", func() {
+					Expect(cache.RecoverState()).To(Succeed())
+					files, err := ioutil.ReadDir(cachedPath)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(files).To(HaveLen(1))
+				})
+			})
 		})
 
 		Context("when the cache size changes", func() {
@@ -1213,6 +1228,8 @@ var _ = Describe("File cache", func() {
 				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
 				Expect(cache.RecoverState()).To(Succeed())
 				Expect(path).To(BeADirectory())
+				tarFilename := strings.TrimSuffix(path, ".d")
+				Expect(tarFilename).To(BeARegularFile())
 			})
 		})
 	})

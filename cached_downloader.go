@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -120,32 +119,31 @@ func (c *cachedDownloader) SaveState() error {
 
 func (c *cachedDownloader) RecoverState() error {
 	file, err := os.Open(c.cacheLocation)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
-	err = json.NewDecoder(file).Decode(c.cache)
-	if err != nil {
+	if err == nil {
+		// parse the file only if it exists
+		err = json.NewDecoder(file).Decode(c.cache)
 		file.Close()
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
-	err = file.Close()
-	if err != nil {
-		return err
-	}
-
+	// set the inuse count to 0 since all containers will be recreated
 	for _, entry := range c.cache.Entries {
 		entry.inuseCount = 0
 	}
 
+	// delete files that aren't in the cache. **note** if there is no
+	// saved_cache.json, then all files will be deleted
 	trackedFiles := map[string]struct{}{}
 
 	for _, entry := range c.cache.Entries {
 		trackedFiles[entry.FilePath] = struct{}{}
+		trackedFiles[entry.ExpandedDirectoryPath] = struct{}{}
 	}
 
 	files, err := ioutil.ReadDir(c.cache.CachedPath)
@@ -159,18 +157,13 @@ func (c *cachedDownloader) RecoverState() error {
 			continue
 		}
 
-		// this could be the extracted directory, so keep it as well
-		path = strings.TrimSuffix(path, ".d")
-		if _, ok := trackedFiles[path+".d"]; ok {
-			continue
-		}
-
 		err = os.RemoveAll(path)
 		if err != nil {
 			return err
 		}
 	}
 
+	// free some disk space in case the maxSizeInBytes was changed
 	c.cache.makeRoom(0, "")
 	return err
 }
