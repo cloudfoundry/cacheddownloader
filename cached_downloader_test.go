@@ -1200,7 +1200,9 @@ var _ = Describe("File cache", func() {
 
 		Context("when a tar file is fetched", func() {
 			var (
-				path string
+				path           string
+				size           int64
+				returnedHeader = http.Header{}
 			)
 
 			BeforeEach(func() {
@@ -1208,28 +1210,58 @@ var _ = Describe("File cache", func() {
 				url, err = Url.Parse(server.URL() + "/my_tar_file")
 				Expect(err).NotTo(HaveOccurred())
 				cacheKey = "my-tar-file-cache-key"
-			})
 
-			JustBeforeEach(func() {
-				returnedHeader := http.Header{}
 				returnedHeader.Set("ETag", "tar-file-etag")
 				server.AppendHandlers(ghttp.CombineHandlers(
 					ghttp.VerifyRequest("GET", "/my_tar_file"),
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 				))
 				var err error
-				path, _, err = cache.FetchAsDirectory(url, cacheKey, checksum, cancelChan)
+				path, size, err = cache.FetchAsDirectory(url, cacheKey, checksum, cancelChan)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(cache.CloseDirectory(cacheKey, path)).To(Succeed())
-				Expect(cache.SaveState()).To(Succeed())
 			})
 
-			It("leaves extracted directories in the cache", func() {
-				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
-				Expect(cache.RecoverState()).To(Succeed())
-				Expect(path).To(BeADirectory())
-				tarFilename := strings.TrimSuffix(path, ".d")
-				Expect(tarFilename).To(BeARegularFile())
+			Context("and cacheddownloader restarted", func() {
+				JustBeforeEach(func() {
+					Expect(cache.SaveState()).To(Succeed())
+					cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
+					Expect(cache.RecoverState()).To(Succeed())
+				})
+
+				It("leaves cache entry files and directories in the cache", func() {
+					Expect(path).To(BeADirectory())
+					tarFilename := strings.TrimSuffix(path, ".d")
+					Expect(tarFilename).To(BeARegularFile())
+				})
+
+				Context("and there isn't enough space for another directory to be fetched", func() {
+					BeforeEach(func() {
+						maxSizeInBytes = size * 3 // just enough space for the tar file currently fetched
+						server.AppendHandlers(ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/my_tar_file"),
+							ghttp.RespondWith(http.StatusNotModified, "", returnedHeader),
+						))
+
+						server.AppendHandlers(ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/my_tar_file"),
+							ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
+						))
+					})
+
+					Context("and another directory is fetched", func() {
+						JustBeforeEach(func() {
+							path, _, err = cache.FetchAsDirectory(url, cacheKey, checksum, cancelChan)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(path).To(BeADirectory())
+						})
+
+						It("does not delete the directory that is referenced", func() {
+							_, _, err := cache.FetchAsDirectory(url, "a-totally-different-cache-key", checksum, cancelChan)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(path).To(BeADirectory())
+						})
+					})
+				})
 			})
 		})
 	})
