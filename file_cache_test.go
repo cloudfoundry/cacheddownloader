@@ -12,20 +12,26 @@ import (
 )
 
 var _ = Describe("FileCache", func() {
-	var cache *cacheddownloader.FileCache
-	var cacheDir string
-	var err error
-
-	var sourceFile, sourceArchive *os.File
+	var (
+		cache                     *cacheddownloader.FileCache
+		cacheDir                  string
+		err                       error
+		sourceFile, sourceArchive *os.File
+		maxSizeInBytes            int64
+	)
 
 	BeforeEach(func() {
 		cacheDir, err = ioutil.TempDir("", "cache-test")
 		Expect(err).NotTo(HaveOccurred())
 
-		cache = cacheddownloader.NewCache(cacheDir, 123424)
-
 		sourceFile = createFile("cache-test-file", "the-file-content")
 		sourceArchive = createArchive("cache-test-archive", "Data in Test File")
+
+		maxSizeInBytes = 123424
+	})
+
+	JustBeforeEach(func() {
+		cache = cacheddownloader.NewCache(cacheDir, maxSizeInBytes)
 	})
 
 	AfterEach(func() {
@@ -46,11 +52,11 @@ var _ = Describe("FileCache", func() {
 			cacheInfo = cacheddownloader.CachingInfoType{}
 		})
 
-		It("fails if room cannot be allocated", func() {
+		It("succeeds even if room cannot be allocated", func() {
 			var err error
 			readCloser, err = cache.Add(cacheKey, sourceFile.Name(), 250000, cacheInfo)
-			Expect(err).To(Equal(cacheddownloader.NotEnoughSpace))
-			Expect(readCloser).To(BeNil())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(readCloser).NotTo(BeNil())
 		})
 
 		Context("when closed is called", func() {
@@ -202,11 +208,11 @@ var _ = Describe("FileCache", func() {
 			cacheInfo = cacheddownloader.CachingInfoType{}
 		})
 
-		It("fails if room cannot be allocated", func() {
+		It("succeeds even if room cannot be allocated", func() {
 			var err error
 			directoryPath, err = cache.AddDirectory(cacheKey, sourceArchive.Name(), 250000, cacheInfo)
-			Expect(err).To(Equal(cacheddownloader.NotEnoughSpace))
-			Expect(directoryPath).To(BeEmpty())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(directoryPath).NotTo(BeEmpty())
 		})
 
 		Context("when closed is called", func() {
@@ -370,7 +376,7 @@ var _ = Describe("FileCache", func() {
 		})
 
 		Context("when there is an item", func() {
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				cacheInfo.LastModified = "1234"
 				reader, err := cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
@@ -417,7 +423,7 @@ var _ = Describe("FileCache", func() {
 
 				Context("when a get is issued before a replace", func() {
 					var reader io.ReadCloser
-					BeforeEach(func() {
+					JustBeforeEach(func() {
 						var err error
 						reader, _, err = cache.Get(cacheKey)
 						Expect(err).NotTo(HaveOccurred())
@@ -435,7 +441,7 @@ var _ = Describe("FileCache", func() {
 		})
 
 		Context("when there is an item added with AddDirectory", func() {
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				cacheInfo.LastModified = "1234"
 				dir, err := cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
@@ -472,7 +478,7 @@ var _ = Describe("FileCache", func() {
 		})
 
 		Context("when there is an added directory", func() {
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				cacheInfo.LastModified = "1234"
 				dir, err := cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
@@ -522,7 +528,7 @@ var _ = Describe("FileCache", func() {
 
 				Context("when a get is issued before a replace", func() {
 					var dirPath string
-					BeforeEach(func() {
+					JustBeforeEach(func() {
 						var err error
 						dirPath, _, err = cache.GetDirectory(cacheKey)
 						Expect(err).NotTo(HaveOccurred())
@@ -541,22 +547,57 @@ var _ = Describe("FileCache", func() {
 		})
 
 		Context("when there is an added archive only", func() {
-			BeforeEach(func() {
+			var (
+				dir           string
+				file          *cacheddownloader.CachedFile
+				cacheInfoType cacheddownloader.CachingInfoType
+				getErr        error
+			)
+
+			JustBeforeEach(func() {
 				cacheInfo.LastModified = "1234"
-				_, err := cache.Add(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
+				var err error
+				file, err = cache.Add(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
+				dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
+			})
+
+			AfterEach(func() {
+				cache.CloseDirectory(cacheKey, dir)
 			})
 
 			It("returns a directory path for the item", func() {
-				dir, ci, err := cache.GetDirectory(cacheKey)
-				Expect(err).NotTo(HaveOccurred())
+				Expect(getErr).NotTo(HaveOccurred())
 				Expect(dir).NotTo(BeEmpty())
-				Expect(ci).To(Equal(cacheInfo))
+				Expect(cacheInfoType).To(Equal(cacheInfo))
 
-				fileInfo, err := os.Stat(dir)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(fileInfo.IsDir()).To(BeTrue())
-				cache.CloseDirectory(cacheKey, dir)
+				Expect(dir).To(BeADirectory())
+			})
+
+			Context("when there isn't enough space", func() {
+				BeforeEach(func() {
+					maxSizeInBytes = 10
+				})
+
+				It("should not return an error", func() {
+					Expect(getErr).NotTo(HaveOccurred())
+				})
+
+				Context("and all references to the file are closed", func() {
+					JustBeforeEach(func() {
+						file.Close()
+						Expect(cache.CloseDirectory(cacheKey, dir)).To(Succeed())
+					})
+
+					It("should delete the directory as soon as we add another file to the cache", func() {
+						newArchive := createArchive("cache-test-file", "new-file-content")
+
+						_, err := cache.Add("new-cache-key", newArchive.Name(), fileSize, cacheInfo)
+						Expect(err).NotTo(HaveOccurred())
+
+						Expect(dir).NotTo(BeADirectory())
+					})
+				})
 			})
 		})
 	})
@@ -566,7 +607,7 @@ var _ = Describe("FileCache", func() {
 		var cacheInfo cacheddownloader.CachingInfoType
 
 		Context("when doing Add", func() {
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				cacheKey = "key"
 
 				cacheInfo.LastModified = "1234"
@@ -606,7 +647,7 @@ var _ = Describe("FileCache", func() {
 		})
 
 		Context("when doing AddDirectory add", func() {
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				cacheKey = "key"
 
 				cacheInfo.LastModified = "1234"

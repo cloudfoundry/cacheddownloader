@@ -13,11 +13,10 @@ import (
 )
 
 var (
-	lock           = &sync.Mutex{}
-	EntryNotFound  = errors.New("Entry Not Found")
-	NotEnoughSpace = errors.New("No space available")
-	AlreadyClosed  = errors.New("Already closed directory")
-	NotCacheable   = errors.New("Not cacheable directory")
+	lock          = &sync.Mutex{}
+	EntryNotFound = errors.New("Entry Not Found")
+	AlreadyClosed = errors.New("Already closed directory")
+	NotCacheable  = errors.New("Not cacheable directory")
 )
 
 type FileCache struct {
@@ -151,10 +150,7 @@ func (c *FileCache) Add(cacheKey, sourcePath string, size int64, cachingInfo Cac
 
 	oldEntry := c.Entries[cacheKey]
 
-	if !c.makeRoom(size, "") {
-		//file does not fit in cache...
-		return nil, NotEnoughSpace
-	}
+	c.makeRoom(size, "")
 
 	c.Seq++
 	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.Seq)
@@ -183,10 +179,7 @@ func (c *FileCache) AddDirectory(cacheKey, sourcePath string, size int64, cachin
 
 	oldEntry := c.Entries[cacheKey]
 
-	if !c.makeRoom(newSize, "") {
-		//file does not fit in cache...
-		return "", NotEnoughSpace
-	}
+	c.makeRoom(newSize, "")
 
 	c.Seq++
 	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.Seq)
@@ -235,12 +228,8 @@ func (c *FileCache) GetDirectory(cacheKey string) (string, CachingInfoType, erro
 	// Was it expanded before
 	if entry.ExpandedDirectoryPath == "" {
 		// Do we have enough room to double the size?
-		if !c.makeRoom(entry.Size, cacheKey) {
-			//file does not fit in cache...
-			return "", CachingInfoType{}, NotEnoughSpace
-		} else {
-			entry.Size = entry.Size * 2
-		}
+		c.makeRoom(entry.Size, cacheKey)
+		entry.Size = entry.Size * 2
 	}
 
 	entry.Access = time.Now()
@@ -279,11 +268,7 @@ func (c *FileCache) updateOldEntries(cacheKey string, entry *FileCacheEntry) {
 	}
 }
 
-func (c *FileCache) makeRoom(size int64, excludedCacheKey string) bool {
-	if size > c.maxSizeInBytes {
-		return false
-	}
-
+func (c *FileCache) makeRoom(size int64, excludedCacheKey string) {
 	usedSpace := c.usedSpace()
 	for c.maxSizeInBytes < usedSpace+size {
 		var oldestEntry *FileCacheEntry
@@ -298,14 +283,14 @@ func (c *FileCache) makeRoom(size int64, excludedCacheKey string) bool {
 
 		if oldestEntry == nil {
 			// could not find anything we could remove
-			return false
+			return
 		}
 
 		usedSpace -= oldestEntry.Size
 		c.remove(oldestCacheKey)
 	}
 
-	return true
+	return
 }
 
 func (c *FileCache) usedSpace() int64 {

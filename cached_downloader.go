@@ -226,10 +226,6 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, checks
 	var newReader *CachedFile
 	if download.cachingInfo.isCacheable() {
 		newReader, err = c.cache.Add(cacheKey, download.path, download.size, download.cachingInfo)
-		if err == NotEnoughSpace {
-			file, err := tempFileRemoveOnClose(download.path)
-			return file, size, err
-		}
 	} else {
 		c.cache.Remove(cacheKey)
 		newReader, err = tempFileRemoveOnClose(download.path)
@@ -257,10 +253,6 @@ func (c *cachedDownloader) fetchCachedDirectory(url *url.URL, cacheKey string, c
 
 	// lookup cache entry
 	currentDirectory, currentCachingInfo, getErr := c.cache.GetDirectory(cacheKey)
-	if getErr == NotEnoughSpace {
-		// We had a cache hit but cannot expand it in the cache
-		return "", 0, getErr
-	}
 
 	// download (short circuits if endpoint respects etag/etc.)
 	download, cacheIsWarm, size, err := c.populateCache(url, cacheKey, currentCachingInfo, checksum, TarTransform, cancelChan)
@@ -285,9 +277,6 @@ func (c *cachedDownloader) fetchCachedDirectory(url *url.URL, cacheKey string, c
 	var newDirectory string
 	if download.cachingInfo.isCacheable() {
 		newDirectory, err = c.cache.AddDirectory(cacheKey, download.path, download.size, download.cachingInfo)
-		if err == NotEnoughSpace {
-			return "", size, err
-		}
 		// return newly fetched directory
 		return newDirectory, size, err
 	} else {

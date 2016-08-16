@@ -389,6 +389,10 @@ var _ = Describe("File cache", func() {
 					ghttp.VerifyRequest("GET", "/my_file"),
 					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 				))
+				server.AppendHandlers(ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/my_file"),
+					ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
+				))
 
 				file, fileSize, err = cache.Fetch(url, cacheKey, checksum, cancelChan)
 			})
@@ -406,7 +410,11 @@ var _ = Describe("File cache", func() {
 			It("should put the file in the uncached path, then delete it", func() {
 				err := file.Close()
 				Expect(err).NotTo(HaveOccurred())
-				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
+
+				_, _, fetchErr := cache.Fetch(url, "new-cache-key", checksum, cancelChan)
+				Expect(fetchErr).NotTo(HaveOccurred())
+
+				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(1))
 				Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 			})
 
@@ -418,7 +426,7 @@ var _ = Describe("File cache", func() {
 					server.AppendHandlers(ghttp.CombineHandlers(
 						ghttp.VerifyRequest("GET", "/my_file"),
 						http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-							Expect(req.Header.Get("If-None-Match")).To(BeEmpty())
+							Expect(req.Header.Get("If-None-Match")).NotTo(BeEmpty())
 						}),
 						ghttp.RespondWith(http.StatusOK, string(downloadContent), returnedHeader),
 					))
@@ -759,7 +767,7 @@ var _ = Describe("File cache", func() {
 
 				It("should have removed the file from the cache", func() {
 					cache.CloseDirectory(cacheKey, fetchDir)
-					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(0))
+					Expect(fetchDir).NotTo(BeADirectory())
 				})
 			})
 
@@ -795,12 +803,23 @@ var _ = Describe("File cache", func() {
 					ghttp.VerifyRequest("GET", "/my_file"),
 					ghttp.RespondWith(http.StatusOK, string(fileContent), returnedHeader),
 				))
+				server.AppendHandlers(ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/my_file"),
+					ghttp.RespondWith(http.StatusOK, string(fileContent), returnedHeader),
+				))
 
 				dir, _, err = cache.FetchAsDirectory(url, cacheKey, checksum, cancelChan)
 			})
 
-			It("should return NotEnoughSpace", func() {
-				Expect(err).To(Equal(cacheddownloader.NotEnoughSpace))
+			It("should successfully download", func() {
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("should have made room when adding to the cache", func() {
+				cache.CloseDirectory(cacheKey, dir)
+				_, _, fetchErr := cache.FetchAsDirectory(url, "new-cache-key", checksum, cancelChan)
+				Expect(fetchErr).NotTo(HaveOccurred())
+				Expect(dir).NotTo(BeADirectory())
 			})
 		})
 
@@ -852,9 +871,9 @@ var _ = Describe("File cache", func() {
 			})
 
 			Context("and cannot delete any items", func() {
-				It("reports NotEnoughSpace if the downloaded file is large that the resources left", func() {
+				It("succeeds even if the downloaded file is larger than the resources left", func() {
 					_, downloadedBytes, err := fetchDir("test", 30)
-					Expect(err).To(Equal(cacheddownloader.NotEnoughSpace))
+					Expect(err).NotTo(HaveOccurred())
 					Expect(downloadedBytes).To(Equal(int64(len(fileContent))))
 				})
 			})
@@ -958,9 +977,9 @@ var _ = Describe("File cache", func() {
 						downloadContent = createTarBuffer("test content", 12).Bytes()
 					})
 
-					It("should error", func() {
-						Expect(fetchDirErr).To(HaveOccurred())
-						Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(1))
+					It("should not error", func() {
+						Expect(fetchDirErr).NotTo(HaveOccurred())
+						Expect(fetchedDir).To(BeADirectory())
 					})
 				})
 
