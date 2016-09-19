@@ -1118,6 +1118,21 @@ var _ = Describe("File cache", func() {
 			})
 		})
 
+		Context("when the state file is corrupted", func() {
+			BeforeEach(func() {
+				saveStateFile := filepath.Join(cachedPath, "saved_cache.json")
+				err := ioutil.WriteFile(saveStateFile, []byte("{\"foo\""), 0755)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("does not return an error", func() {
+				cache = cacheddownloader.New(cachedPath, uncachedPath, maxSizeInBytes, 1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil, transformer)
+
+				err := cache.RecoverState()
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
 		Context("when additional files beyond the saved cache exist on disk", func() {
 			var (
 				extraFile string

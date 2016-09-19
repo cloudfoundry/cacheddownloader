@@ -127,9 +127,6 @@ func (c *cachedDownloader) RecoverState() error {
 		// parse the file only if it exists
 		err = json.NewDecoder(file).Decode(c.cache)
 		file.Close()
-		if err != nil {
-			return err
-		}
 	}
 
 	// set the inuse count to 0 since all containers will be recreated
