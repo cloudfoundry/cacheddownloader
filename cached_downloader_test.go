@@ -446,6 +446,9 @@ var _ = Describe("File cache", func() {
 		})
 
 		Context("when the cache is full", func() {
+			var closeAfterDownload bool
+			var unclosedFiles []io.ReadCloser
+
 			fetchFileOfSize := func(name string, size int) {
 				downloadContent = []byte(strings.Repeat("7", size))
 				url, _ = Url.Parse(server.URL() + "/" + name)
@@ -457,29 +460,99 @@ var _ = Describe("File cache", func() {
 				cachedFile, _, err := cache.Fetch(url, name, checksum, cancelChan)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ioutil.ReadAll(cachedFile)).To(Equal(downloadContent))
-				cachedFile.Close()
+				if closeAfterDownload {
+					cachedFile.Close()
+				} else {
+					// *note*: the following is absolutely necessary since the
+					// ReadClosers we get back have gc finalizers and could potentially
+					// close the file if they are garbage collected and make the test
+					// flaky
+					unclosedFiles = append(unclosedFiles, cachedFile)
+				}
 			}
 
 			BeforeEach(func() {
+				closeAfterDownload = true
+			})
+
+			AfterEach(func() {
+				for _, f := range unclosedFiles {
+					f.Close()
+				}
+			})
+
+			JustBeforeEach(func() {
 				fetchFileOfSize("A", int(maxSizeInBytes/4))
 				fetchFileOfSize("B", int(maxSizeInBytes/4))
 				fetchFileOfSize("C", int(maxSizeInBytes/4))
 			})
 
-			It("deletes the oldest cached files until there is space", func() {
-				//try to add a file that has size larger
-				fetchFileOfSize("D", int(maxSizeInBytes/2)+1)
+			Context("when the cache entries are not in use", func() {
+				BeforeEach(func() {
+					closeAfterDownload = true
+				})
 
-				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
+				JustBeforeEach(func() {
+					fetchFileOfSize("D", int(maxSizeInBytes/2)+1)
+				})
 
-				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(0))
-				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).To(HaveLen(0))
-				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).To(HaveLen(1))
-				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(1))
+				It("deletes the oldest cached files until there is space", func() {
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
+
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(0))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).To(HaveLen(0))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).To(HaveLen(1))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(1))
+				})
+			})
+
+			Context("when the cache entries are still in use", func() {
+				BeforeEach(func() {
+					closeAfterDownload = false
+				})
+
+				JustBeforeEach(func() {
+					fetchFileOfSize("D", int(maxSizeInBytes/2)+1)
+				})
+
+				It("does not delete the cache entries from disk", func() {
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(4))
+
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(1))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).To(HaveLen(1))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).To(HaveLen(1))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(1))
+				})
+
+				Context("and an earlier cache key was fetched", func() {
+					var cachedFile io.ReadCloser
+
+					JustBeforeEach(func() {
+						name := "A"
+						url, _ := Url.Parse(server.URL() + "/" + name)
+						server.AppendHandlers(ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/"+name),
+							ghttp.VerifyHeader(http.Header{"If-None-Match": []string{"my-original-etag"}}),
+							ghttp.RespondWith(http.StatusNotModified, nil),
+						))
+
+						var err error
+						cachedFile, _, err = cache.Fetch(url, name, checksum, cancelChan)
+						Expect(err).NotTo(HaveOccurred())
+					})
+
+					AfterEach(func() {
+						cachedFile.Close()
+					})
+
+					It("does not fetch the file again", func() {
+						Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(1))
+					})
+				})
 			})
 
 			Describe("when one of the files has just been read", func() {
-				BeforeEach(func() {
+				JustBeforeEach(func() {
 					server.AppendHandlers(ghttp.CombineHandlers(
 						ghttp.VerifyRequest("GET", "/A"),
 						ghttp.RespondWith(http.StatusNotModified, "", returnedHeader),

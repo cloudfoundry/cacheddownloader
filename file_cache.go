@@ -274,7 +274,7 @@ func (c *FileCache) makeRoom(size int64, excludedCacheKey string) {
 		var oldestEntry *FileCacheEntry
 		oldestAccessTime, oldestCacheKey := time.Now(), ""
 		for ck, f := range c.Entries {
-			if f.Access.Before(oldestAccessTime) && ck != excludedCacheKey {
+			if f.Access.Before(oldestAccessTime) && ck != excludedCacheKey && f.inuseCount <= 1 {
 				oldestAccessTime = f.Access
 				oldestEntry = f
 				oldestCacheKey = ck
