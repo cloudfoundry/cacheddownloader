@@ -41,10 +41,12 @@ var _ = Describe("FileCache", func() {
 	})
 
 	Describe("Add", func() {
-		var cacheKey string
-		var fileSize int64
-		var cacheInfo cacheddownloader.CachingInfoType
-		var readCloser *cacheddownloader.CachedFile
+		var (
+			cacheKey   string
+			fileSize   int64
+			cacheInfo  cacheddownloader.CachingInfoType
+			readCloser *cacheddownloader.CachedFile
+		)
 
 		BeforeEach(func() {
 			cacheKey = "the-cache-key"
@@ -52,37 +54,7 @@ var _ = Describe("FileCache", func() {
 			cacheInfo = cacheddownloader.CachingInfoType{}
 		})
 
-		It("succeeds even if room cannot be allocated", func() {
-			var err error
-			readCloser, err = cache.Add(cacheKey, sourceFile.Name(), 250000, cacheInfo)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(readCloser).NotTo(BeNil())
-		})
-
-		Context("when closed is called", func() {
-			JustBeforeEach(func() {
-				var err error
-				readCloser, err = cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(readCloser).NotTo(BeNil())
-			})
-
-			Context("once", func() {
-				It("succeeds and has 1 file in the cache", func() {
-					Expect(readCloser.Close()).NotTo(HaveOccurred())
-					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
-				})
-			})
-
-			Context("more than once", func() {
-				It("fails", func() {
-					Expect(readCloser.Close()).NotTo(HaveOccurred())
-					Expect(readCloser.Close()).To(HaveOccurred())
-				})
-			})
-		})
-
-		Context("when the cache is empty", func() {
+		Context("when there is space in the cache", func() {
 			JustBeforeEach(func() {
 				var err error
 				readCloser, err = cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
@@ -98,100 +70,117 @@ var _ = Describe("FileCache", func() {
 				content, err := ioutil.ReadAll(readCloser)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(content)).To(Equal("the-file-content"))
-			})
-
-			It("has 1 file in the cache", func() {
 				Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 			})
-		})
 
-		Context("when a cachekey exists", func() {
-			var newSourceFile *os.File
-			var newFileSize int64
-			var newCacheInfo cacheddownloader.CachingInfoType
-			var newReader io.ReadCloser
+			Context("when closed is called", func() {
+				Context("once", func() {
+					It("succeeds and has 1 file in the cache", func() {
+						Expect(readCloser.Close()).NotTo(HaveOccurred())
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+					})
+				})
 
-			BeforeEach(func() {
-				newSourceFile = createFile("cache-test-file", "new-file-content")
-				newFileSize = fileSize
-				newCacheInfo = cacheInfo
-			})
-
-			JustBeforeEach(func() {
-				readCloser, err = cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(readCloser).NotTo(BeNil())
-			})
-
-			AfterEach(func() {
-				readCloser.Close()
-				os.RemoveAll(newSourceFile.Name())
-			})
-
-			Context("when adding the same cache key with identical info", func() {
-				It("ignores the add", func() {
-					reader, err := cache.Add(cacheKey, newSourceFile.Name(), fileSize, cacheInfo)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(reader).NotTo(BeNil())
+				Context("more than once", func() {
+					It("fails", func() {
+						Expect(readCloser.Close()).NotTo(HaveOccurred())
+						Expect(readCloser.Close()).To(HaveOccurred())
+					})
 				})
 			})
 
-			Context("when a adding the same cache key and different info", func() {
-				JustBeforeEach(func() {
-					var err error
-					newReader, err = cache.Add(cacheKey, newSourceFile.Name(), newFileSize, newCacheInfo)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(newReader).NotTo(BeNil())
+			Context("when a cachekey exists", func() {
+				var (
+					newSourceFile *os.File
+					newFileSize   int64
+					newCacheInfo  cacheddownloader.CachingInfoType
+					newReader     io.ReadCloser
+				)
+
+				BeforeEach(func() {
+					newSourceFile = createFile("cache-test-file", "new-file-content")
+					newFileSize = fileSize
+					newCacheInfo = cacheInfo
 				})
 
 				AfterEach(func() {
-					newReader.Close()
+					os.RemoveAll(newSourceFile.Name())
 				})
 
-				Context("different file size", func() {
-					BeforeEach(func() {
-						newFileSize = fileSize - 1
-					})
-
-					It("returns a reader for the new content", func() {
-						content, err := ioutil.ReadAll(newReader)
+				Context("when adding the same cache key with identical info", func() {
+					It("ignores the add", func() {
+						reader, err := cache.Add(cacheKey, newSourceFile.Name(), fileSize, cacheInfo)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(string(content)).To(Equal("new-file-content"))
+						Expect(reader).NotTo(BeNil())
 					})
-
-					It("has files in the cache", func() {
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
-						Expect(readCloser.Close()).NotTo(HaveOccurred())
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
-					})
-
 				})
 
-				Context("different caching info", func() {
-					BeforeEach(func() {
-						newCacheInfo = cacheddownloader.CachingInfoType{
-							LastModified: "1234",
-						}
-					})
-
-					It("returns a reader for the new content", func() {
-						content, err := ioutil.ReadAll(newReader)
+				Context("when a adding the same cache key and different info", func() {
+					JustBeforeEach(func() {
+						var err error
+						newReader, err = cache.Add(cacheKey, newSourceFile.Name(), newFileSize, newCacheInfo)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(string(content)).To(Equal("new-file-content"))
+						Expect(newReader).NotTo(BeNil())
 					})
 
-					It("has files in the cache", func() {
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
-						Expect(readCloser.Close()).NotTo(HaveOccurred())
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+					AfterEach(func() {
+						newReader.Close()
 					})
 
-					It("still allows the previous reader to read", func() {
-						content, err := ioutil.ReadAll(readCloser)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(string(content)).To(Equal("the-file-content"))
+					Context("different file size", func() {
+						BeforeEach(func() {
+							newFileSize = fileSize - 1
+						})
+
+						It("returns a reader for the new content", func() {
+							content, err := ioutil.ReadAll(newReader)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(string(content)).To(Equal("new-file-content"))
+						})
+
+						It("has files in the cache", func() {
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+							Expect(readCloser.Close()).NotTo(HaveOccurred())
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+						})
+
+					})
+
+					Context("different caching info", func() {
+						BeforeEach(func() {
+							newCacheInfo = cacheddownloader.CachingInfoType{
+								LastModified: "1234",
+							}
+						})
+
+						It("returns a reader for the new content", func() {
+							content, err := ioutil.ReadAll(newReader)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(string(content)).To(Equal("new-file-content"))
+						})
+
+						It("has files in the cache", func() {
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+							Expect(readCloser.Close()).NotTo(HaveOccurred())
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+						})
+
+						It("still allows the previous reader to read", func() {
+							content, err := ioutil.ReadAll(readCloser)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(string(content)).To(Equal("the-file-content"))
+						})
 					})
 				})
+			})
+		})
+
+		Context("when there is not enough space in the cache", func() {
+			It("succeeds even if room cannot be allocated", func() {
+				var err error
+				readCloser, err = cache.Add(cacheKey, sourceFile.Name(), 250000, cacheInfo)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(readCloser).NotTo(BeNil())
 			})
 		})
 	})
@@ -208,149 +197,138 @@ var _ = Describe("FileCache", func() {
 			cacheInfo = cacheddownloader.CachingInfoType{}
 		})
 
-		It("succeeds even if room cannot be allocated", func() {
-			var err error
-			directoryPath, err = cache.AddDirectory(cacheKey, sourceArchive.Name(), 250000, cacheInfo)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(directoryPath).NotTo(BeEmpty())
-		})
-
-		Context("when closed is called", func() {
+		Context("when there is space in the cache", func() {
 			JustBeforeEach(func() {
-				var err error
 				directoryPath, err = cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(directoryPath).NotTo(BeEmpty())
 			})
 
-			Context("once", func() {
-				It("succeeds and has 1 file in the cache", func() {
-					err = cache.CloseDirectory(cacheKey, directoryPath)
+			AfterEach(func() {
+				cache.CloseDirectory(cacheKey, directoryPath)
+			})
+
+			Context("when the cache is empty", func() {
+				It("returns an existing directory", func() {
+					fileInfo, err := os.Stat(directoryPath)
 					Expect(err).NotTo(HaveOccurred())
+					Expect(fileInfo.IsDir()).To(BeTrue())
+				})
+
+				It("has 1 file in the cache", func() {
 					Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
 				})
 			})
 
-			Context("more than once", func() {
-				It("fails", func() {
-					err := cache.CloseDirectory(cacheKey, directoryPath)
-					Expect(err).NotTo(HaveOccurred())
-					err = cache.CloseDirectory(cacheKey, directoryPath)
-					Expect(err).To(HaveOccurred())
-				})
-			})
-		})
+			Context("when a cachekey exists", func() {
+				var newSourceArchive *os.File
+				var newFileSize int64
+				var newCacheInfo cacheddownloader.CachingInfoType
+				var newDirectoryPath string
 
-		Context("when the cache is empty", func() {
-			JustBeforeEach(func() {
-				var err error
-				directoryPath, err = cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(directoryPath).NotTo(BeEmpty())
-			})
-
-			AfterEach(func() {
-				cache.CloseDirectory(cacheKey, directoryPath)
-			})
-
-			It("returns an existing directory", func() {
-				fileInfo, err := os.Stat(directoryPath)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(fileInfo.IsDir()).To(BeTrue())
-			})
-
-			It("has 1 file in the cache", func() {
-				Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
-			})
-		})
-
-		Context("when a cachekey exists", func() {
-			var newSourceArchive *os.File
-			var newFileSize int64
-			var newCacheInfo cacheddownloader.CachingInfoType
-			var newDirectoryPath string
-
-			BeforeEach(func() {
-				newSourceArchive = createArchive("cache-test-file", "new-file-content")
-				newFileSize = fileSize
-				newCacheInfo = cacheInfo
-			})
-
-			JustBeforeEach(func() {
-				directoryPath, err = cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(directoryPath).NotTo(BeEmpty())
-			})
-
-			AfterEach(func() {
-				cache.CloseDirectory(cacheKey, directoryPath)
-				os.RemoveAll(newSourceArchive.Name())
-			})
-
-			Context("when adding the same cache key with identical info", func() {
-				It("ignores the add", func() {
-					directoryPath, err := cache.AddDirectory(cacheKey, newSourceArchive.Name(), fileSize, cacheInfo)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(directoryPath).NotTo(BeEmpty())
-				})
-			})
-
-			Context("when a adding the same cache key and different info", func() {
-				JustBeforeEach(func() {
-					var err error
-					newDirectoryPath, err = cache.AddDirectory(cacheKey, newSourceArchive.Name(), newFileSize, newCacheInfo)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(newDirectoryPath).NotTo(BeEmpty())
+				BeforeEach(func() {
+					newSourceArchive = createArchive("cache-test-file", "new-file-content")
+					newFileSize = fileSize
+					newCacheInfo = cacheInfo
 				})
 
 				AfterEach(func() {
-					cache.CloseDirectory(cacheKey, newDirectoryPath)
+					os.RemoveAll(newSourceArchive.Name())
 				})
 
-				Context("different file size", func() {
-					BeforeEach(func() {
-						newFileSize = fileSize - 1
-					})
-
-					It("returns an existing directory", func() {
-						fileInfo, err := os.Stat(newDirectoryPath)
+				Context("when adding the same cache key with identical info", func() {
+					It("ignores the add", func() {
+						directoryPath, err := cache.AddDirectory(cacheKey, newSourceArchive.Name(), fileSize, cacheInfo)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(fileInfo.IsDir()).To(BeTrue())
+						Expect(directoryPath).NotTo(BeEmpty())
+					})
+				})
+
+				Context("when a adding the same cache key and different info", func() {
+					JustBeforeEach(func() {
+						var err error
+						newDirectoryPath, err = cache.AddDirectory(cacheKey, newSourceArchive.Name(), newFileSize, newCacheInfo)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(newDirectoryPath).NotTo(BeEmpty())
 					})
 
-					It("has files in the cache", func() {
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(4))
-						cache.CloseDirectory(cacheKey, directoryPath)
+					AfterEach(func() {
+						cache.CloseDirectory(cacheKey, newDirectoryPath)
+					})
+
+					Context("different file size", func() {
+						BeforeEach(func() {
+							newFileSize = fileSize - 1
+						})
+
+						It("returns an existing directory", func() {
+							fileInfo, err := os.Stat(newDirectoryPath)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(fileInfo.IsDir()).To(BeTrue())
+						})
+
+						It("has files in the cache", func() {
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(4))
+							cache.CloseDirectory(cacheKey, directoryPath)
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+						})
+
+					})
+
+					Context("different caching info", func() {
+						BeforeEach(func() {
+							newCacheInfo = cacheddownloader.CachingInfoType{
+								LastModified: "1234",
+							}
+						})
+
+						It("returns an existing directory", func() {
+							fileInfo, err := os.Stat(newDirectoryPath)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(fileInfo.IsDir()).To(BeTrue())
+						})
+
+						It("has files in the cache", func() {
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(4))
+							cache.CloseDirectory(cacheKey, directoryPath)
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+						})
+
+						It("still allows the previous directory to exist", func() {
+							fileInfo, err := os.Stat(directoryPath)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(fileInfo.IsDir()).To(BeTrue())
+						})
+					})
+				})
+			})
+
+			Context("when closed is called", func() {
+				Context("once", func() {
+					It("succeeds and has 1 file in the cache", func() {
+						err = cache.CloseDirectory(cacheKey, directoryPath)
+						Expect(err).NotTo(HaveOccurred())
 						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
 					})
-
 				})
 
-				Context("different caching info", func() {
-					BeforeEach(func() {
-						newCacheInfo = cacheddownloader.CachingInfoType{
-							LastModified: "1234",
-						}
-					})
-
-					It("returns an existing directory", func() {
-						fileInfo, err := os.Stat(newDirectoryPath)
+				Context("more than once", func() {
+					It("fails", func() {
+						err := cache.CloseDirectory(cacheKey, directoryPath)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(fileInfo.IsDir()).To(BeTrue())
-					})
-
-					It("has files in the cache", func() {
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(4))
-						cache.CloseDirectory(cacheKey, directoryPath)
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
-					})
-
-					It("still allows the previous directory to exist", func() {
-						fileInfo, err := os.Stat(directoryPath)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(fileInfo.IsDir()).To(BeTrue())
+						err = cache.CloseDirectory(cacheKey, directoryPath)
+						Expect(err).To(HaveOccurred())
 					})
 				})
+			})
+		})
+
+		Context("when there is not space in the cache", func() {
+			It("succeeds even if room cannot be allocated", func() {
+				var err error
+				directoryPath, err = cache.AddDirectory(cacheKey, sourceArchive.Name(), 250000, cacheInfo)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(directoryPath).NotTo(BeEmpty())
 			})
 		})
 	})
