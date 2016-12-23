@@ -10,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"code.cloudfoundry.org/archiver/compressor"
 )
 
 var (
@@ -33,7 +35,8 @@ type FileCacheEntry struct {
 	CachingInfo           CachingInfoType
 	FilePath              string
 	ExpandedDirectoryPath string
-	inuseCount            int
+	directoryInUseCount   int
+	fileInUseCount        int
 }
 
 func NewCache(dir string, maxSizeInBytes int64) *FileCache {
@@ -53,46 +56,104 @@ func newFileCacheEntry(cachePath string, size int64, cachingInfo CachingInfoType
 		Access:                time.Now(),
 		CachingInfo:           cachingInfo,
 		ExpandedDirectoryPath: "",
-		inuseCount:            1,
 	}
 }
 
-func (e *FileCacheEntry) incrementUse() {
-	e.inuseCount++
+func (e *FileCacheEntry) inUse() bool {
+	return e.directoryInUseCount <= 0 && e.fileInUseCount <= 0
 }
 
 func (e *FileCacheEntry) decrementUse() {
-	if e.inuseCount > 0 {
-		e.inuseCount--
+	e.decrementFileInUseCount()
+	e.decrementDirectoryInUseCount()
+}
+
+func (e *FileCacheEntry) incrementDirectoryInUseCount() {
+	e.directoryInUseCount++
+}
+
+func (e *FileCacheEntry) decrementDirectoryInUseCount() {
+	e.directoryInUseCount--
+
+	// Delete the directory if the tarball is the only asset
+	// being used or if the directory has been removed (in use count -1)
+	if e.directoryInUseCount < 0 || (e.directoryInUseCount == 0 && e.fileInUseCount > 0) {
+		err := os.RemoveAll(e.ExpandedDirectoryPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Unable to delete cached directory", err)
+		}
+
+		if e.fileInUseCount > 0 {
+			e.Size = e.Size / 2
+		}
 	}
+}
 
-	count := e.inuseCount
+func (e *FileCacheEntry) incrementFileInUseCount() {
+	e.fileInUseCount++
+}
 
-	if count == 0 {
+func (e *FileCacheEntry) decrementFileInUseCount() {
+	e.fileInUseCount--
+
+	// Delete the file if the file is not being used and there is
+	// a directory of if the file has been removed (in use count -1)
+	if e.fileInUseCount < 0 || (e.fileInUseCount == 0 && e.directoryInUseCount > 0) {
 		err := os.RemoveAll(e.FilePath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Unable to delete cached file", err)
 		}
 
-		// if there is a directory we need to remove it as well
-		err = os.RemoveAll(e.ExpandedDirectoryPath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Unable to delete cached file", err)
+		if e.directoryInUseCount > 0 {
+			e.Size = e.Size / 2
 		}
 	}
 }
 
+func (e *FileCacheEntry) fileExists() bool {
+	_, err := os.Stat(e.FilePath)
+	return os.IsNotExist(err)
+}
+
 // Can we change this to be an io.ReadCloser return
 func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
-	f, err := os.Open(e.FilePath)
-	if err != nil {
-		return nil, err
+	var f *os.File
+	var err error
+
+	if e.fileExists() {
+		f, err = os.Create(e.FilePath)
+		if err != nil {
+			return nil, err
+		}
+
+		err = compressor.WriteTar(e.ExpandedDirectoryPath, f)
+		if err != nil {
+			return nil, err
+		}
+
+		// If the directory is not used remove it
+		if e.directoryInUseCount == 0 {
+			err = os.RemoveAll(e.ExpandedDirectoryPath)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Unable to remove cached directory", err)
+			}
+			e.ExpandedDirectoryPath = ""
+		} else {
+			// Double the size to account for both assets
+			e.Size = e.Size * 2
+		}
+	} else {
+		f, err = os.Open(e.FilePath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	e.incrementUse()
+	e.incrementFileInUseCount()
+
 	readCloser := NewFileCloser(f, func(filePath string) {
 		lock.Lock()
-		e.decrementUse()
+		e.decrementFileInUseCount()
 		lock.Unlock()
 	})
 
@@ -100,8 +161,6 @@ func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
 }
 
 func (e *FileCacheEntry) expandedDirectory() (string, error) {
-	e.incrementUse()
-
 	// if it has not been extracted before expand it!
 	if e.ExpandedDirectoryPath == "" {
 		e.ExpandedDirectoryPath = e.FilePath + ".d"
@@ -109,7 +168,17 @@ func (e *FileCacheEntry) expandedDirectory() (string, error) {
 		if err != nil {
 			return "", err
 		}
+
+		// If the file is not in use, we can delete it
+		if e.fileInUseCount == 0 {
+			err = os.RemoveAll(e.FilePath)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Unable to delete the cached file", err)
+			}
+		}
 	}
+
+	e.incrementDirectoryInUseCount()
 
 	return e.ExpandedDirectoryPath, nil
 }
@@ -120,12 +189,12 @@ func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
 
 	entry := c.Entries[cacheKey]
 	if entry != nil && entry.ExpandedDirectoryPath == dirPath {
-		if entry.inuseCount == 1 {
+		if entry.directoryInUseCount == 0 {
 			// We don't think anybody is using this so throw an error
 			return AlreadyClosed
 		}
 
-		entry.decrementUse()
+		entry.decrementDirectoryInUseCount()
 		return nil
 	}
 
@@ -136,8 +205,8 @@ func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
 		return EntryNotFound
 	}
 
-	entry.decrementUse()
-	if entry.inuseCount == 0 {
+	entry.decrementDirectoryInUseCount()
+	if entry.inUse() {
 		// done with this old entry, so clean it up
 		delete(c.OldEntries, cacheKey+dirPath)
 	}
@@ -174,12 +243,9 @@ func (c *FileCache) AddDirectory(cacheKey, sourcePath string, size int64, cachin
 	lock.Lock()
 	defer lock.Unlock()
 
-	// double the size when expanding to directories
-	newSize := 2 * size
-
 	oldEntry := c.Entries[cacheKey]
 
-	c.makeRoom(newSize, "")
+	c.makeRoom(size, "")
 
 	c.Seq++
 	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.Seq)
@@ -189,7 +255,7 @@ func (c *FileCache) AddDirectory(cacheKey, sourcePath string, size int64, cachin
 	if err != nil {
 		return "", err
 	}
-	newEntry := newFileCacheEntry(cachePath, newSize, cachingInfo)
+	newEntry := newFileCacheEntry(cachePath, size, cachingInfo)
 	c.Entries[cacheKey] = newEntry
 	if oldEntry != nil {
 		oldEntry.decrementUse()
@@ -205,6 +271,10 @@ func (c *FileCache) Get(cacheKey string) (*CachedFile, CachingInfoType, error) {
 	entry := c.Entries[cacheKey]
 	if entry == nil {
 		return nil, CachingInfoType{}, EntryNotFound
+	}
+
+	if entry.fileExists() {
+		c.makeRoom(entry.Size, cacheKey)
 	}
 
 	entry.Access = time.Now()
@@ -258,7 +328,7 @@ func (c *FileCache) remove(cacheKey string) {
 
 func (c *FileCache) updateOldEntries(cacheKey string, entry *FileCacheEntry) {
 	if entry != nil {
-		if entry.inuseCount > 0 && entry.ExpandedDirectoryPath != "" {
+		if entry.inUse() && entry.ExpandedDirectoryPath != "" {
 			// put it in the oldEntries Cache since somebody may still be using the directory
 			c.OldEntries[cacheKey+entry.ExpandedDirectoryPath] = entry
 		} else {
@@ -274,7 +344,7 @@ func (c *FileCache) makeRoom(size int64, excludedCacheKey string) {
 		var oldestEntry *FileCacheEntry
 		oldestAccessTime, oldestCacheKey := time.Now(), ""
 		for ck, f := range c.Entries {
-			if f.Access.Before(oldestAccessTime) && ck != excludedCacheKey && f.inuseCount <= 1 {
+			if f.Access.Before(oldestAccessTime) && ck != excludedCacheKey && f.inUse() {
 				oldestAccessTime = f.Access
 				oldestEntry = f
 				oldestCacheKey = ck

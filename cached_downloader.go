@@ -132,7 +132,8 @@ func (c *cachedDownloader) RecoverState() error {
 	// set the inuse count to 0 since all containers will be recreated
 	for _, entry := range c.cache.Entries {
 		// inuseCount starts at 1 (i.e. 1 == no references to the entry)
-		entry.inuseCount = 1
+		entry.directoryInUseCount = 0
+		entry.fileInUseCount = 0
 	}
 
 	// delete files that aren't in the cache. **note** if there is no

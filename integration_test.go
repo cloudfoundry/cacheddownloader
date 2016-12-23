@@ -91,17 +91,16 @@ var _ = Describe("Integration", func() {
 		}()
 
 		cacheContents, err := ioutil.ReadDir(cachedPath)
-		Expect(cacheContents).To(HaveLen(2))
+		Expect(cacheContents).To(HaveLen(1))
 		Expect(err).NotTo(HaveOccurred())
 
 		// ReadDir sorts by file name, so the tarfile should come before the directory
-		Expect(cacheContents[0].Mode().IsRegular()).To(BeTrue())
-		Expect(cacheContents[1].Mode().IsDir()).To(BeTrue())
+		Expect(cacheContents[0].Mode().IsDir()).To(BeTrue())
 
-		dirPathInCache := filepath.Join(cachedPath, cacheContents[1].Name())
+		dirPathInCache := filepath.Join(cachedPath, cacheContents[0].Name())
 		Expect(dirPath).To(Equal(dirPathInCache))
 
-		return dirPath, cacheContents[1].ModTime()
+		return dirPath, cacheContents[0].ModTime()
 	}
 
 	Describe("Fetch", func() {

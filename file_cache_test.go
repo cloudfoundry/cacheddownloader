@@ -28,9 +28,7 @@ var _ = Describe("FileCache", func() {
 		sourceArchive = createArchive("cache-test-archive", "Data in Test File")
 
 		maxSizeInBytes = 123424
-	})
 
-	JustBeforeEach(func() {
 		cache = cacheddownloader.NewCache(cacheDir, maxSizeInBytes)
 	})
 
@@ -186,10 +184,11 @@ var _ = Describe("FileCache", func() {
 	})
 
 	Describe("AddDirectory", func() {
-		var cacheKey string
-		var fileSize int64
-		var cacheInfo cacheddownloader.CachingInfoType
-		var directoryPath string
+		var (
+			cacheKey, directoryPath string
+			fileSize                int64
+			cacheInfo               cacheddownloader.CachingInfoType
+		)
 
 		BeforeEach(func() {
 			cacheKey = "the-cache-key"
@@ -216,7 +215,13 @@ var _ = Describe("FileCache", func() {
 				})
 
 				It("has 1 file in the cache", func() {
-					Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+				})
+
+				It("only accounts for 1 * size of asset", func() {
+					entry, ok := cache.Entries[cacheKey]
+					Expect(ok).To(BeTrue())
+					Expect(entry.Size).To(Equal(fileSize))
 				})
 			})
 
@@ -268,11 +273,10 @@ var _ = Describe("FileCache", func() {
 						})
 
 						It("has files in the cache", func() {
-							Expect(filenamesInDir(cacheDir)).To(HaveLen(4))
-							cache.CloseDirectory(cacheKey, directoryPath)
 							Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+							cache.CloseDirectory(cacheKey, directoryPath)
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 						})
-
 					})
 
 					Context("different caching info", func() {
@@ -289,9 +293,9 @@ var _ = Describe("FileCache", func() {
 						})
 
 						It("has files in the cache", func() {
-							Expect(filenamesInDir(cacheDir)).To(HaveLen(4))
-							cache.CloseDirectory(cacheKey, directoryPath)
 							Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+							cache.CloseDirectory(cacheKey, directoryPath)
+							Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 						})
 
 						It("still allows the previous directory to exist", func() {
@@ -308,7 +312,7 @@ var _ = Describe("FileCache", func() {
 					It("succeeds and has 1 file in the cache", func() {
 						err = cache.CloseDirectory(cacheKey, directoryPath)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 					})
 				})
 
@@ -358,7 +362,8 @@ var _ = Describe("FileCache", func() {
 				cacheInfo.LastModified = "1234"
 				reader, err := cache.Add(cacheKey, sourceFile.Name(), fileSize, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
-				reader.Close()
+
+				Expect(reader.Close()).To(Succeed())
 			})
 
 			It("returns a reader for the item", func() {
@@ -419,26 +424,110 @@ var _ = Describe("FileCache", func() {
 		})
 
 		Context("when there is an item added with AddDirectory", func() {
+			var (
+				dir        string
+				sourceStat os.FileInfo
+			)
+
 			JustBeforeEach(func() {
+				var err error
 				cacheInfo.LastModified = "1234"
-				dir, err := cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
+
+				sourceStat, err = os.Stat(sourceArchive.Name())
 				Expect(err).NotTo(HaveOccurred())
-				cache.CloseDirectory(cacheKey, dir)
+
+				dir, err = cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
+				Expect(err).NotTo(HaveOccurred())
 			})
 
-			It("returns a reader for the item", func() {
+			It("returns a reader for the item and keeps the directory", func() {
 				reader, ci, err := cache.Get(cacheKey)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(reader).NotTo(BeNil())
 				Expect(ci).To(Equal(cacheInfo))
+				Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+
+				Expect(reader.Name()).To(ContainSubstring(cacheDir))
+			})
+
+			It("doubles the size of the entry", func() {
+				_, _, err := cache.Get(cacheKey)
+				Expect(err).NotTo(HaveOccurred())
+
+				entry, ok := cache.Entries[cacheKey]
+				Expect(ok).To(BeTrue())
+				Expect(entry.Size).To(Equal(2 * fileSize))
+			})
+
+			Context("and the file is closed", func() {
+				It("removes the file from the cache and sets the size to 1x", func() {
+					reader, _, err := cache.Get(cacheKey)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(reader).NotTo(BeNil())
+
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+					Expect(reader.Close()).To(Succeed())
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+
+					entry, ok := cache.Entries[cacheKey]
+					Expect(ok).To(BeTrue())
+					Expect(entry.Size).To(Equal(fileSize))
+				})
+			})
+
+			Context("and the directory is not in use", func() {
+				JustBeforeEach(func() {
+					cache.CloseDirectory(cacheKey, dir)
+				})
+
+				It("returns a reader for the item and removes the directory", func() {
+					reader, ci, err := cache.Get(cacheKey)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(reader).NotTo(BeNil())
+					Expect(ci).To(Equal(cacheInfo))
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+				})
+
+				It("clears out the ExpandedDirectoryPath and size to 1x", func() {
+					_, _, err := cache.Get(cacheKey)
+					Expect(err).NotTo(HaveOccurred())
+
+					entry, ok := cache.Entries[cacheKey]
+					Expect(ok).To(BeTrue())
+					Expect(entry.ExpandedDirectoryPath).To(Equal(""))
+					Expect(entry.Size).To(Equal(fileSize))
+				})
+			})
+
+			Context("when there is not enough space in the cache", func() {
+				BeforeEach(func() {
+					maxSizeInBytes = 150
+					cache = cacheddownloader.NewCache(cacheDir, maxSizeInBytes)
+				})
+
+				JustBeforeEach(func() {
+					readCloser, err := cache.Add("new-cache-key", sourceFile.Name(), 20, cacheddownloader.CachingInfoType{})
+					Expect(err).NotTo(HaveOccurred())
+					Expect(readCloser.Close()).To(Succeed())
+				})
+
+				It("evicts files not in use", func() {
+					_, _, err := cache.Get(cacheKey)
+					Expect(err).NotTo(HaveOccurred())
+
+					_, _, err = cache.Get("new-cache-key")
+					Expect(err).To(Equal(cacheddownloader.EntryNotFound))
+				})
 			})
 		})
 	})
 
 	Describe("GetDirectory", func() {
-		var cacheKey string
-		var fileSize int64
-		var cacheInfo cacheddownloader.CachingInfoType
+		var (
+			cacheKey  string
+			fileSize  int64
+			cacheInfo cacheddownloader.CachingInfoType
+		)
 
 		BeforeEach(func() {
 			cacheKey = "key"
@@ -456,7 +545,7 @@ var _ = Describe("FileCache", func() {
 		})
 
 		Context("when there is an added directory", func() {
-			JustBeforeEach(func() {
+			BeforeEach(func() {
 				cacheInfo.LastModified = "1234"
 				dir, err := cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
@@ -506,19 +595,21 @@ var _ = Describe("FileCache", func() {
 
 				Context("when a get is issued before a replace", func() {
 					var dirPath string
-					JustBeforeEach(func() {
+
+					BeforeEach(func() {
 						var err error
 						dirPath, _, err = cache.GetDirectory(cacheKey)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(dirPath).NotTo(BeEmpty())
 
 						// Now we need 2 one for the archive and another for the dir
-						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 					})
 
 					It("the old file is removed when closed", func() {
-						cache.CloseDirectory(cacheKey, dirPath)
 						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+						cache.CloseDirectory(cacheKey, dirPath)
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 					})
 				})
 			})
@@ -537,24 +628,59 @@ var _ = Describe("FileCache", func() {
 				var err error
 				file, err = cache.Add(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
-				dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
 			})
 
 			AfterEach(func() {
 				cache.CloseDirectory(cacheKey, dir)
 			})
 
-			It("returns a directory path for the item", func() {
+			It("returns a directory path for the item and leaves the tarball", func() {
+				dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
 				Expect(getErr).NotTo(HaveOccurred())
 				Expect(dir).NotTo(BeEmpty())
 				Expect(cacheInfoType).To(Equal(cacheInfo))
-
 				Expect(dir).To(BeADirectory())
+				Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+			})
+
+			Context("and the directory is closed", func() {
+				It("removes the directory from the cache and sets the size to 1x", func() {
+					dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
+					Expect(getErr).NotTo(HaveOccurred())
+
+					err := cache.CloseDirectory(cacheKey, dir)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+
+					entry, ok := cache.Entries[cacheKey]
+					Expect(ok).To(BeTrue())
+					Expect(entry.Size).To(Equal(fileSize))
+				})
+			})
+
+			Context("when the file is not in use", func() {
+				JustBeforeEach(func() {
+					Expect(file.Close()).To(Succeed())
+				})
+
+				It("returns a directory path for the item and removes the tarball", func() {
+					dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
+					Expect(getErr).NotTo(HaveOccurred())
+					Expect(dir).NotTo(BeEmpty())
+					Expect(cacheInfoType).To(Equal(cacheInfo))
+					Expect(dir).To(BeADirectory())
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+				})
 			})
 
 			Context("when there isn't enough space", func() {
 				BeforeEach(func() {
 					maxSizeInBytes = 10
+					cache = cacheddownloader.NewCache(cacheDir, maxSizeInBytes)
+				})
+
+				JustBeforeEach(func() {
+					dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
 				})
 
 				It("should not return an error", func() {
@@ -581,8 +707,10 @@ var _ = Describe("FileCache", func() {
 	})
 
 	Describe("Remove", func() {
-		var cacheKey string
-		var cacheInfo cacheddownloader.CachingInfoType
+		var (
+			cacheKey  string
+			cacheInfo cacheddownloader.CachingInfoType
+		)
 
 		Context("when doing Add", func() {
 			JustBeforeEach(func() {
@@ -591,7 +719,7 @@ var _ = Describe("FileCache", func() {
 				cacheInfo.LastModified = "1234"
 				reader, err := cache.Add(cacheKey, sourceFile.Name(), 100, cacheInfo)
 				Expect(err).NotTo(HaveOccurred())
-				reader.Close()
+				Expect(reader.Close()).To(Succeed())
 			})
 
 			Context("when the key does not exist", func() {
@@ -642,7 +770,7 @@ var _ = Describe("FileCache", func() {
 
 			Context("when the key exists", func() {
 				It("removes the file in the cache", func() {
-					Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 					cache.Remove(cacheKey)
 					Expect(filenamesInDir(cacheDir)).To(HaveLen(0))
 				})
@@ -653,10 +781,10 @@ var _ = Describe("FileCache", func() {
 					dir, _, err := cache.GetDirectory(cacheKey)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(dir).NotTo(BeEmpty())
-					Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 
 					cache.Remove(cacheKey)
-					Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 
 					cache.CloseDirectory(cacheKey, dir)
 					Expect(filenamesInDir(cacheDir)).To(HaveLen(0))

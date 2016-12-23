@@ -713,8 +713,8 @@ var _ = Describe("File cache", func() {
 					Expect(fetchedDirSize).To(Equal(int64(len(downloadContent))))
 				})
 
-				It("should store the tarball and directory in the cache", func() {
-					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
+				It("should store the directory in the cache", func() {
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(1))
 				})
 
 				It("should remove any temporary assets generated along the way", func() {
@@ -819,7 +819,7 @@ var _ = Describe("File cache", func() {
 					Expect(err).NotTo(HaveOccurred())
 					err = cache.CloseDirectory(cacheKey, dir)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(1))
 					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 			})
@@ -852,7 +852,7 @@ var _ = Describe("File cache", func() {
 				It("should not redownload the file", func() {
 					dir, _, err := cache.FetchAsDirectory(url, cacheKey, checksum, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(1))
 					cache.CloseDirectory(cacheKey, dir)
 				})
 
@@ -928,19 +928,19 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("should have all entries in the cache", func() {
-				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(6))
+				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(3))
 			})
 
 			It("deletes the oldest cached files until there is space", func() {
-				//try to add a file that has size larger
-				fetchDirOfSize("D", 3)
+				//try to add a file that has size larger (this creates a file that is 23 GB...)
+				fetchDirOfSize("D", 18)
 
-				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(4))
+				Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
 
 				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(0))
 				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).To(HaveLen(0))
-				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).To(HaveLen(2))
-				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(2))
+				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).To(HaveLen(1))
+				Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(1))
 			})
 
 			Context("and cannot delete any items", func() {
@@ -967,14 +967,14 @@ var _ = Describe("File cache", func() {
 
 				It("considers that file to be the newest", func() {
 					//try to add a file that has size larger
-					fetchDirOfSize("D", 3)
+					fetchDirOfSize("D", 18)
 
-					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(4))
+					Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
 
-					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(2))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("A")+"*"))).To(HaveLen(1))
 					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("B")+"*"))).To(HaveLen(0))
 					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("C")+"*"))).To(HaveLen(0))
-					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(2))
+					Expect(filepath.Glob(filepath.Join(cachedPath, computeMd5("D")+"*"))).To(HaveLen(1))
 				})
 			})
 		})
@@ -1040,7 +1040,7 @@ var _ = Describe("File cache", func() {
 						fileInfo, err := os.Stat(fetchedDir)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(fileInfo.IsDir()).To(BeTrue())
-						Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
+						Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(1))
 						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 					})
 				})
@@ -1079,7 +1079,7 @@ var _ = Describe("File cache", func() {
 						fileInfo, err := os.Stat(fetchedDir)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(fileInfo.IsDir()).To(BeTrue())
-						Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(3))
+						Expect(ioutil.ReadDir(cachedPath)).To(HaveLen(2))
 						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
 					})
 				})
@@ -1305,7 +1305,7 @@ var _ = Describe("File cache", func() {
 			Expect(downloadSize).To(BeEquivalentTo(0))
 		})
 
-		Context("when a tar file is fetched", func() {
+		Context("when an expanded directory is fetched", func() {
 			var (
 				path           string
 				size           int64
@@ -1335,10 +1335,8 @@ var _ = Describe("File cache", func() {
 					Expect(cache.RecoverState()).To(Succeed())
 				})
 
-				It("leaves cache entry files and directories in the cache", func() {
+				It("leaves cache entry directories in the cache", func() {
 					Expect(path).To(BeADirectory())
-					tarFilename := strings.TrimSuffix(path, ".d")
-					Expect(tarFilename).To(BeARegularFile())
 				})
 
 				Context("and there isn't enough space for another directory to be fetched", func() {
