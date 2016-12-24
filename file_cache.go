@@ -60,7 +60,7 @@ func newFileCacheEntry(cachePath string, size int64, cachingInfo CachingInfoType
 }
 
 func (e *FileCacheEntry) inUse() bool {
-	return e.directoryInUseCount <= 0 && e.fileInUseCount <= 0
+	return e.directoryInUseCount > 0 || e.fileInUseCount > 0
 }
 
 func (e *FileCacheEntry) decrementUse() {
@@ -206,7 +206,7 @@ func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
 	}
 
 	entry.decrementDirectoryInUseCount()
-	if entry.inUse() {
+	if !entry.inUse() {
 		// done with this old entry, so clean it up
 		delete(c.OldEntries, cacheKey+dirPath)
 	}
@@ -328,7 +328,7 @@ func (c *FileCache) remove(cacheKey string) {
 
 func (c *FileCache) updateOldEntries(cacheKey string, entry *FileCacheEntry) {
 	if entry != nil {
-		if entry.inUse() && entry.ExpandedDirectoryPath != "" {
+		if !entry.inUse() && entry.ExpandedDirectoryPath != "" {
 			// put it in the oldEntries Cache since somebody may still be using the directory
 			c.OldEntries[cacheKey+entry.ExpandedDirectoryPath] = entry
 		} else {
@@ -344,7 +344,7 @@ func (c *FileCache) makeRoom(size int64, excludedCacheKey string) {
 		var oldestEntry *FileCacheEntry
 		oldestAccessTime, oldestCacheKey := time.Now(), ""
 		for ck, f := range c.Entries {
-			if f.Access.Before(oldestAccessTime) && ck != excludedCacheKey && f.inUse() {
+			if f.Access.Before(oldestAccessTime) && ck != excludedCacheKey && !f.inUse() {
 				oldestAccessTime = f.Access
 				oldestEntry = f
 				oldestCacheKey = ck
