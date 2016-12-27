@@ -425,15 +425,14 @@ var _ = Describe("FileCache", func() {
 
 		Context("when there is an item added with AddDirectory", func() {
 			var (
-				dir        string
-				sourceStat os.FileInfo
+				dir string
 			)
 
 			JustBeforeEach(func() {
 				var err error
 				cacheInfo.LastModified = "1234"
 
-				sourceStat, err = os.Stat(sourceArchive.Name())
+				_, err = os.Stat(sourceArchive.Name())
 				Expect(err).NotTo(HaveOccurred())
 
 				dir, err = cache.AddDirectory(cacheKey, sourceArchive.Name(), fileSize, cacheInfo)
