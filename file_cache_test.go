@@ -643,17 +643,31 @@ var _ = Describe("FileCache", func() {
 			})
 
 			Context("and the directory is closed", func() {
-				It("removes the directory from the cache and sets the size to 1x", func() {
+				JustBeforeEach(func() {
 					dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
 					Expect(getErr).NotTo(HaveOccurred())
 
 					err := cache.CloseDirectory(cacheKey, dir)
 					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("removes the directory from the cache and sets the size to 1x", func() {
 					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 
 					entry, ok := cache.Entries[cacheKey]
 					Expect(ok).To(BeTrue())
 					Expect(entry.Size).To(Equal(fileSize))
+				})
+
+				Context("and the directory is later fetched", func() {
+					It("returns a valid path", func() {
+						dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
+						Expect(getErr).NotTo(HaveOccurred())
+						Expect(dir).NotTo(BeEmpty())
+						Expect(cacheInfoType).To(Equal(cacheInfo))
+						Expect(dir).To(BeADirectory())
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+					})
 				})
 			})
 

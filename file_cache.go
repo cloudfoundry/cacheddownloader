@@ -82,6 +82,7 @@ func (e *FileCacheEntry) decrementDirectoryInUseCount() {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Unable to delete cached directory", err)
 		}
+		e.ExpandedDirectoryPath = ""
 
 		if e.fileInUseCount > 0 {
 			e.Size = e.Size / 2
