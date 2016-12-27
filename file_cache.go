@@ -110,7 +110,7 @@ func (e *FileCacheEntry) decrementFileInUseCount() {
 	}
 }
 
-func (e *FileCacheEntry) fileExists() bool {
+func (e *FileCacheEntry) fileDoesNotExist() bool {
 	_, err := os.Stat(e.FilePath)
 	return os.IsNotExist(err)
 }
@@ -120,7 +120,7 @@ func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
 	var f *os.File
 	var err error
 
-	if e.fileExists() {
+	if e.fileDoesNotExist() {
 		f, err = os.Create(e.FilePath)
 		if err != nil {
 			return nil, err
@@ -273,7 +273,7 @@ func (c *FileCache) Get(cacheKey string) (*CachedFile, CachingInfoType, error) {
 		return nil, CachingInfoType{}, EntryNotFound
 	}
 
-	if entry.fileExists() {
+	if entry.fileDoesNotExist() {
 		c.makeRoom(entry.Size, cacheKey)
 	}
 
