@@ -475,26 +475,37 @@ var _ = Describe("FileCache", func() {
 			})
 
 			Context("and the directory is not in use", func() {
+				var (
+					reader *cacheddownloader.CachedFile
+					ci     cacheddownloader.CachingInfoType
+				)
+
 				JustBeforeEach(func() {
 					cache.CloseDirectory(cacheKey, dir)
+					var err error
+					reader, ci, err = cache.Get(cacheKey)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				It("returns a reader for the item and removes the directory", func() {
-					reader, ci, err := cache.Get(cacheKey)
-					Expect(err).NotTo(HaveOccurred())
 					Expect(reader).NotTo(BeNil())
 					Expect(ci).To(Equal(cacheInfo))
 					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 				})
 
-				It("clears out the ExpandedDirectoryPath and size to 1x", func() {
-					_, _, err := cache.Get(cacheKey)
-					Expect(err).NotTo(HaveOccurred())
-
+				It("set the size to 1x", func() {
 					entry, ok := cache.Entries[cacheKey]
 					Expect(ok).To(BeTrue())
-					Expect(entry.ExpandedDirectoryPath).To(Equal(""))
 					Expect(entry.Size).To(Equal(fileSize))
+				})
+
+				Context("and the directory is later retrieved", func() {
+					It("returns a valid path to the directory", func() {
+						dir, _, err := cache.GetDirectory(cacheKey)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(dir).To(BeADirectory())
+						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+					})
 				})
 			})
 

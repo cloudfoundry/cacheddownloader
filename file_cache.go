@@ -116,6 +116,14 @@ func (e *FileCacheEntry) fileDoesNotExist() bool {
 	return os.IsNotExist(err)
 }
 
+func (e *FileCacheEntry) dirDoesNotExist() bool {
+	if e.ExpandedDirectoryPath == "" {
+		return true
+	}
+	_, err := os.Stat(e.ExpandedDirectoryPath)
+	return os.IsNotExist(err)
+}
+
 // Can we change this to be an io.ReadCloser return
 func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
 	var f *os.File
@@ -138,7 +146,6 @@ func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Unable to remove cached directory", err)
 			}
-			e.ExpandedDirectoryPath = ""
 		} else {
 			// Double the size to account for both assets
 			e.Size = e.Size * 2
@@ -163,7 +170,7 @@ func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
 
 func (e *FileCacheEntry) expandedDirectory() (string, error) {
 	// if it has not been extracted before expand it!
-	if e.ExpandedDirectoryPath == "" {
+	if e.dirDoesNotExist() {
 		e.ExpandedDirectoryPath = e.FilePath + ".d"
 		err := extractTarToDirectory(e.FilePath, e.ExpandedDirectoryPath)
 		if err != nil {
@@ -297,7 +304,7 @@ func (c *FileCache) GetDirectory(cacheKey string) (string, CachingInfoType, erro
 	}
 
 	// Was it expanded before
-	if entry.ExpandedDirectoryPath == "" {
+	if entry.dirDoesNotExist() {
 		// Do we have enough room to double the size?
 		c.makeRoom(entry.Size, cacheKey)
 		entry.Size = entry.Size * 2
