@@ -712,6 +712,26 @@ var _ = Describe("FileCache", func() {
 					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
 				})
 
+				Context("after a compaction", func() {
+					var tempFile string
+
+					JustBeforeEach(func() {
+						By("compacting the directory")
+						file, _, err = cache.Get(cacheKey)
+						Expect(err).NotTo(HaveOccurred())
+					})
+
+					AfterEach(func() {
+						Expect(os.RemoveAll(tempFile)).To(Succeed())
+					})
+
+					It("returns a reader that is valid tar archive", func() {
+						reader := tar.NewReader(file)
+						_, err := reader.Next()
+						Expect(err).NotTo(HaveOccurred())
+					})
+				})
+
 				Context("after an iteration of compaction/extraction", func() {
 					JustBeforeEach(func() {
 						By("compacting the directory")

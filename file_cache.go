@@ -159,6 +159,10 @@ func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
 
 	e.incrementFileInUseCount()
 
+	if _, err := f.Seek(0, os.SEEK_SET); err != nil {
+		return nil, err
+	}
+
 	readCloser := NewFileCloser(f, func(filePath string) {
 		lock.Lock()
 		e.decrementFileInUseCount()
