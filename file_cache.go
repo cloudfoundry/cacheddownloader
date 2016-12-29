@@ -135,7 +135,7 @@ func (e *FileCacheEntry) readCloser() (*CachedFile, error) {
 			return nil, err
 		}
 
-		err = compressor.WriteTar(e.ExpandedDirectoryPath, f)
+		err = compressor.WriteTar(e.ExpandedDirectoryPath+"/", f)
 		if err != nil {
 			return nil, err
 		}

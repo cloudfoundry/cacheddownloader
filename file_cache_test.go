@@ -5,6 +5,8 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"code.cloudfoundry.org/cacheddownloader"
 	. "github.com/onsi/ginkgo"
@@ -671,29 +673,67 @@ var _ = Describe("FileCache", func() {
 				})
 
 				Context("and the directory is later fetched", func() {
-					It("returns a valid path", func() {
+					JustBeforeEach(func() {
 						dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
 						Expect(getErr).NotTo(HaveOccurred())
 						Expect(dir).NotTo(BeEmpty())
 						Expect(cacheInfoType).To(Equal(cacheInfo))
+					})
+
+					It("returns a valid path", func() {
 						Expect(dir).To(BeADirectory())
 						Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+					})
+
+					It("has the contents of the archive", func() {
+						paths := recursiveList(dir)
+						Expect(paths).To(ConsistOf(
+							"/bin",
+							"/bin/readme.txt",
+							"/diego.txt",
+							"/testdir",
+							"/testdir/file.txt",
+						))
 					})
 				})
 			})
 
-			Context("when the file is not in use", func() {
+			Context("when the file is not in use and the directory is fetched", func() {
 				JustBeforeEach(func() {
 					Expect(file.Close()).To(Succeed())
-				})
-
-				It("returns a directory path for the item and removes the tarball", func() {
 					dir, cacheInfoType, getErr = cache.GetDirectory(cacheKey)
 					Expect(getErr).NotTo(HaveOccurred())
 					Expect(dir).NotTo(BeEmpty())
 					Expect(cacheInfoType).To(Equal(cacheInfo))
+				})
+
+				It("returns a directory path for the item and removes the tarball", func() {
 					Expect(dir).To(BeADirectory())
 					Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+				})
+
+				Context("after an iteration of compaction/extraction", func() {
+					JustBeforeEach(func() {
+						By("compacting the directory")
+						file, _, err = cache.Get(cacheKey)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(cache.CloseDirectory(cacheKey, dir)).To(Succeed())
+						Expect(file.Close()).To(Succeed())
+
+						By("extracting the tar file")
+						dir, _, err = cache.GetDirectory(cacheKey)
+					})
+
+					It("contains the same content", func() {
+						paths := recursiveList(dir)
+						Expect(paths).To(ConsistOf(
+							"/bin",
+							"/bin/readme.txt",
+							"/diego.txt",
+							"/testdir",
+							"/testdir/file.txt",
+						))
+					})
 				})
 			})
 
@@ -876,4 +916,16 @@ func filenamesInDir(dir string) []string {
 	}
 
 	return result
+}
+
+func recursiveList(dir string) []string {
+	paths := []string{}
+	filepath.Walk(dir, func(path string, _ os.FileInfo, _ error) error {
+		path = strings.TrimPrefix(path, dir)
+		if path != "" {
+			paths = append(paths, path)
+		}
+		return nil
+	})
+	return paths
 }
