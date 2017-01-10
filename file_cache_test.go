@@ -693,8 +693,18 @@ var _ = Describe("FileCache", func() {
 							"/diego.txt",
 							"/testdir",
 							"/testdir/file.txt",
+							"/testdir/fileLink.txt",
 						))
 					})
+
+					It("correctly expands symbolic links", func() {
+						fullpath := filepath.Join(dir, "/testdir/fileLink.txt")
+						fileInfo, err := os.Lstat(fullpath)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(fileInfo.Mode().IsRegular()).ToNot(BeTrue())
+						Expect(fileInfo.Mode() & os.ModeSymlink).To(Equal(os.ModeSymlink))
+					})
+
 				})
 			})
 
@@ -752,6 +762,7 @@ var _ = Describe("FileCache", func() {
 							"/diego.txt",
 							"/testdir",
 							"/testdir/file.txt",
+							"/testdir/fileLink.txt",
 						))
 					})
 				})
@@ -905,18 +916,33 @@ func createArchive(filename, sampleData string) *os.File {
 		{"diego.txt", "Diego names:\nVizzini\nGeoffrey\nPrincess Buttercup\n", tar.TypeReg, 0600},
 		{"testdir", "", tar.TypeDir, 0766},
 		{"testdir/file.txt", sampleData, tar.TypeReg, 0600},
+		{"testdir/fileLink.txt", "/diego.txt", tar.TypeSymlink, 0600},
 	}
 	for _, file := range files {
-		hdr := &tar.Header{
-			Name:     file.Name,
-			Typeflag: file.Type,
-			Mode:     file.Mode,
-			Size:     int64(len(file.Body)),
+		var hdr *tar.Header
+		if file.Type == tar.TypeSymlink {
+			hdr = &tar.Header{
+				Name:     file.Name,
+				Typeflag: file.Type,
+				Mode:     file.Mode,
+				Linkname: file.Body,
+			}
+			hdr.Mode &^= 040000 // c_ISDIR
+			hdr.Mode |= 0120000 // c_ISLNK
+		} else {
+			hdr = &tar.Header{
+				Name:     file.Name,
+				Typeflag: file.Type,
+				Mode:     file.Mode,
+				Size:     int64(len(file.Body)),
+			}
 		}
 		err := tw.WriteHeader(hdr)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = tw.Write([]byte(file.Body))
-		Expect(err).NotTo(HaveOccurred())
+		if file.Type != tar.TypeSymlink {
+			_, err = tw.Write([]byte(file.Body))
+			Expect(err).NotTo(HaveOccurred())
+		}
 	}
 	// Make sure to check the error on Close.
 	err = tw.Close()
