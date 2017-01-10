@@ -428,6 +428,16 @@ func extractTarToDirectory(sourcePath, destinationDir string) error {
 				return err
 			}
 
+		case tar.TypeSymlink:
+			// handle normal file
+			fullpath := filepath.Join(destinationDir, filename)
+			linkpath := filepath.Join(destinationDir, header.Linkname)
+
+			err := os.Symlink(linkpath, fullpath)
+			if err != nil {
+				return err
+			}
+
 		default:
 			// handle normal file
 			fullpath := filepath.Join(destinationDir, filename)
