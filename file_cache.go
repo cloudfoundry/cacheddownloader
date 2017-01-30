@@ -1,17 +1,15 @@
 package cacheddownloader
 
 import (
-	"archive/tar"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"code.cloudfoundry.org/archiver/compressor"
+	"code.cloudfoundry.org/archiver/extractor"
 )
 
 var (
@@ -384,85 +382,6 @@ func (c *FileCache) usedSpace() int64 {
 }
 
 func extractTarToDirectory(sourcePath, destinationDir string) error {
-	_, err := os.Stat(destinationDir)
-	if err != nil && err.(*os.PathError).Err != syscall.ENOENT {
-		return err
-	}
-
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		return err
-	}
-
-	defer file.Close()
-
-	var fileReader io.ReadCloser = file
-
-	// Make the target directory
-	err = os.MkdirAll(destinationDir, 0777)
-	if err != nil {
-		return err
-	}
-
-	tarBallReader := tar.NewReader(fileReader)
-	// Extracting tarred files
-	for {
-		header, err := tarBallReader.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
-		}
-
-		// get the individual filename and extract to the current directory
-		filename := header.Name
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			// handle directory
-			fullpath := filepath.Join(destinationDir, filename)
-			err = os.MkdirAll(fullpath, os.FileMode(header.Mode))
-
-			if err != nil {
-				return err
-			}
-
-		case tar.TypeSymlink:
-			// handle normal file
-			fullpath := filepath.Join(destinationDir, filename)
-
-			err := os.Symlink(header.Linkname, fullpath)
-			if err != nil {
-				return err
-			}
-
-		default:
-			// handle normal file
-			fullpath := filepath.Join(destinationDir, filename)
-
-			err := os.MkdirAll(filepath.Dir(fullpath), 0777)
-			if err != nil {
-				return err
-			}
-
-			writer, err := os.Create(fullpath)
-
-			if err != nil {
-				return err
-			}
-
-			io.Copy(writer, tarBallReader)
-
-			err = os.Chmod(fullpath, os.FileMode(header.Mode))
-
-			if err != nil {
-				return err
-			}
-
-			writer.Close()
-
-		}
-	}
-	return nil
+	e := extractor.NewTar()
+	return e.Extract(sourcePath, destinationDir)
 }
