@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"code.cloudfoundry.org/lager"
 )
 
 // called after a new object has entered the cache.
@@ -28,24 +30,24 @@ type CachedDownloader interface {
 	//
 	// Fetch returns a stream that can be used to read the contents of the downloaded file. While this stream is active (i.e., not yet closed),
 	// the associated cache entry will be considered in use and will not be ejected from the cache.
-	Fetch(urlToFetch *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error)
+	Fetch(logger lager.Logger, urlToFetch *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error)
 
 	// FetchAsDirectory downloads the tarfile pointed to by the given URL, expands the tarfile into a directory, and returns the path of that directory as well as the total number of bytes downloaded.
-	FetchAsDirectory(urlToFetch *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (dirPath string, size int64, err error)
+	FetchAsDirectory(logger lager.Logger, urlToFetch *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (dirPath string, size int64, err error)
 
 	// CloseDirectory decrements the usage counter for the given cacheKey/directoryPath pair.
 	// It should be called when the directory returned by FetchAsDirectory is no longer in use.
 	// In this way, FetchAsDirectory and CloseDirectory should be treated as a pair of operations,
 	// and a process that calls FetchAsDirectory should make sure a corresponding CloseDirectory is eventually called.
-	CloseDirectory(cacheKey, directoryPath string) error
+	CloseDirectory(logger lager.Logger, cacheKey, directoryPath string) error
 
 	// SaveState writes the current state of the cache metadata to a file so that it can be recovered
 	// later. This should be called on process shutdown.
-	SaveState() error
+	SaveState(logger lager.Logger) error
 
 	// RecoverState checks to see if a state file exists (from a previous SaveState call), and restores
 	// the cache state from that information if such a file exists. This should be called on startup.
-	RecoverState() error
+	RecoverState(logger lager.Logger) error
 }
 
 func NoopTransform(source, destination string) (int64, error) {
@@ -112,7 +114,7 @@ func New(
 	}
 }
 
-func (c *cachedDownloader) SaveState() error {
+func (c *cachedDownloader) SaveState(logger lager.Logger) error {
 	json, err := json.Marshal(c.cache)
 	if err != nil {
 		return err
@@ -121,7 +123,7 @@ func (c *cachedDownloader) SaveState() error {
 	return ioutil.WriteFile(c.cacheLocation, json, 0600)
 }
 
-func (c *cachedDownloader) RecoverState() error {
+func (c *cachedDownloader) RecoverState(logger lager.Logger) error {
 	file, err := os.Open(c.cacheLocation)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -167,26 +169,26 @@ func (c *cachedDownloader) RecoverState() error {
 	}
 
 	// free some disk space in case the maxSizeInBytes was changed
-	c.cache.makeRoom(0, "")
+	c.cache.makeRoom(logger, 0, "")
 	return err
 }
 
-func (c *cachedDownloader) CloseDirectory(cacheKey, directoryPath string) error {
+func (c *cachedDownloader) CloseDirectory(logger lager.Logger, cacheKey, directoryPath string) error {
 	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
-	return c.cache.CloseDirectory(cacheKey, directoryPath)
+	return c.cache.CloseDirectory(logger, cacheKey, directoryPath)
 }
 
-func (c *cachedDownloader) Fetch(url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (io.ReadCloser, int64, error) {
+func (c *cachedDownloader) Fetch(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (io.ReadCloser, int64, error) {
 	if cacheKey == "" {
-		return c.fetchUncachedFile(url, checksum, cancelChan)
+		return c.fetchUncachedFile(logger, url, checksum, cancelChan)
 	}
 
 	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
-	return c.fetchCachedFile(url, cacheKey, checksum, cancelChan)
+	return c.fetchCachedFile(logger, url, cacheKey, checksum, cancelChan)
 }
 
-func (c *cachedDownloader) fetchUncachedFile(url *url.URL, checksum ChecksumInfoType, cancelChan <-chan struct{}) (*CachedFile, int64, error) {
-	download, _, size, err := c.populateCache(url, "uncached", CachingInfoType{}, checksum, c.transformer, cancelChan)
+func (c *cachedDownloader) fetchUncachedFile(logger lager.Logger, url *url.URL, checksum ChecksumInfoType, cancelChan <-chan struct{}) (*CachedFile, int64, error) {
+	download, _, size, err := c.populateCache(logger, url, "uncached", CachingInfoType{}, checksum, c.transformer, cancelChan)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -195,7 +197,7 @@ func (c *cachedDownloader) fetchUncachedFile(url *url.URL, checksum ChecksumInfo
 	return file, size, err
 }
 
-func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (*CachedFile, int64, error) {
+func (c *cachedDownloader) fetchCachedFile(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (*CachedFile, int64, error) {
 	rateLimiter, err := c.acquireLimiter(cacheKey, cancelChan)
 	if err != nil {
 		return nil, 0, err
@@ -203,10 +205,10 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, checks
 	defer c.releaseLimiter(cacheKey, rateLimiter)
 
 	// lookup cache entry
-	currentReader, currentCachingInfo, getErr := c.cache.Get(cacheKey)
+	currentReader, currentCachingInfo, getErr := c.cache.Get(logger, cacheKey)
 
 	// download (short circuits if endpoint respects etag/etc.)
-	download, cacheIsWarm, size, err := c.populateCache(url, cacheKey, currentCachingInfo, checksum, c.transformer, cancelChan)
+	download, cacheIsWarm, size, err := c.populateCache(logger, url, cacheKey, currentCachingInfo, checksum, c.transformer, cancelChan)
 	if err != nil {
 		if currentReader != nil {
 			currentReader.Close()
@@ -227,9 +229,9 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, checks
 	// fetch uncached data
 	var newReader *CachedFile
 	if download.cachingInfo.isCacheable() {
-		newReader, err = c.cache.Add(cacheKey, download.path, download.size, download.cachingInfo)
+		newReader, err = c.cache.Add(logger, cacheKey, download.path, download.size, download.cachingInfo)
 	} else {
-		c.cache.Remove(cacheKey)
+		c.cache.Remove(logger, cacheKey)
 		newReader, err = tempFileRemoveOnClose(download.path)
 	}
 
@@ -237,16 +239,16 @@ func (c *cachedDownloader) fetchCachedFile(url *url.URL, cacheKey string, checks
 	return newReader, size, err
 }
 
-func (c *cachedDownloader) FetchAsDirectory(url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (string, int64, error) {
+func (c *cachedDownloader) FetchAsDirectory(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (string, int64, error) {
 	if cacheKey == "" {
 		return "", 0, NotCacheable
 	}
 
 	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
-	return c.fetchCachedDirectory(url, cacheKey, checksum, cancelChan)
+	return c.fetchCachedDirectory(logger, url, cacheKey, checksum, cancelChan)
 }
 
-func (c *cachedDownloader) fetchCachedDirectory(url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (string, int64, error) {
+func (c *cachedDownloader) fetchCachedDirectory(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (string, int64, error) {
 	rateLimiter, err := c.acquireLimiter(cacheKey, cancelChan)
 	if err != nil {
 		return "", 0, err
@@ -254,13 +256,13 @@ func (c *cachedDownloader) fetchCachedDirectory(url *url.URL, cacheKey string, c
 	defer c.releaseLimiter(cacheKey, rateLimiter)
 
 	// lookup cache entry
-	currentDirectory, currentCachingInfo, getErr := c.cache.GetDirectory(cacheKey)
+	currentDirectory, currentCachingInfo, getErr := c.cache.GetDirectory(logger, cacheKey)
 
 	// download (short circuits if endpoint respects etag/etc.)
-	download, cacheIsWarm, size, err := c.populateCache(url, cacheKey, currentCachingInfo, checksum, TarTransform, cancelChan)
+	download, cacheIsWarm, size, err := c.populateCache(logger, url, cacheKey, currentCachingInfo, checksum, TarTransform, cancelChan)
 	if err != nil {
 		if currentDirectory != "" {
-			c.cache.CloseDirectory(cacheKey, currentDirectory)
+			c.cache.CloseDirectory(logger, cacheKey, currentDirectory)
 		}
 		return "", 0, err
 	}
@@ -272,17 +274,17 @@ func (c *cachedDownloader) fetchCachedDirectory(url *url.URL, cacheKey string, c
 
 	// current cache is not fresh; disregard it
 	if currentDirectory != "" {
-		c.cache.CloseDirectory(cacheKey, currentDirectory)
+		c.cache.CloseDirectory(logger, cacheKey, currentDirectory)
 	}
 
 	// fetch uncached data
 	var newDirectory string
 	if download.cachingInfo.isCacheable() {
-		newDirectory, err = c.cache.AddDirectory(cacheKey, download.path, download.size, download.cachingInfo)
+		newDirectory, err = c.cache.AddDirectory(logger, cacheKey, download.path, download.size, download.cachingInfo)
 		// return newly fetched directory
 		return newDirectory, size, err
 	} else {
-		c.cache.Remove(cacheKey)
+		c.cache.Remove(logger, cacheKey)
 	}
 
 	return "", 0, NotCacheable
@@ -338,6 +340,7 @@ type download struct {
 // uses only a TarTransformer, which overwrites what is currently set. This way one transformer
 // can be used to call Fetch and FetchAsDirectory
 func (c *cachedDownloader) populateCache(
+	logger lager.Logger,
 	url *url.URL,
 	name string,
 	cachingInfo CachingInfoType,
@@ -345,7 +348,7 @@ func (c *cachedDownloader) populateCache(
 	transformer CacheTransformer,
 	cancelChan <-chan struct{},
 ) (download, bool, int64, error) {
-	filename, cachingInfo, err := c.downloader.Download(url, func() (*os.File, error) {
+	filename, cachingInfo, err := c.downloader.Download(logger, url, func() (*os.File, error) {
 		return ioutil.TempFile(c.uncachedPath, name+"-")
 	}, cachingInfo, checksum, cancelChan)
 	if err != nil {

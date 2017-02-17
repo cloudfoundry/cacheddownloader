@@ -7,12 +7,14 @@ import (
 	"sync"
 
 	"code.cloudfoundry.org/cacheddownloader"
+	"code.cloudfoundry.org/lager"
 )
 
 type FakeCachedDownloader struct {
-	FetchStub        func(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error)
+	FetchStub        func(logger lager.Logger, urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error)
 	fetchMutex       sync.RWMutex
 	fetchArgsForCall []struct {
+		logger     lager.Logger
 		urlToFetch *url.URL
 		cacheKey   string
 		checksum   cacheddownloader.ChecksumInfoType
@@ -23,9 +25,10 @@ type FakeCachedDownloader struct {
 		result2 int64
 		result3 error
 	}
-	FetchAsDirectoryStub        func(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (dirPath string, size int64, err error)
+	FetchAsDirectoryStub        func(logger lager.Logger, urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (dirPath string, size int64, err error)
 	fetchAsDirectoryMutex       sync.RWMutex
 	fetchAsDirectoryArgsForCall []struct {
+		logger     lager.Logger
 		urlToFetch *url.URL
 		cacheKey   string
 		checksum   cacheddownloader.ChecksumInfoType
@@ -36,43 +39,49 @@ type FakeCachedDownloader struct {
 		result2 int64
 		result3 error
 	}
-	CloseDirectoryStub        func(cacheKey, directoryPath string) error
+	CloseDirectoryStub        func(logger lager.Logger, cacheKey, directoryPath string) error
 	closeDirectoryMutex       sync.RWMutex
 	closeDirectoryArgsForCall []struct {
+		logger        lager.Logger
 		cacheKey      string
 		directoryPath string
 	}
 	closeDirectoryReturns struct {
 		result1 error
 	}
-	SaveStateStub        func() error
+	SaveStateStub        func(logger lager.Logger) error
 	saveStateMutex       sync.RWMutex
-	saveStateArgsForCall []struct{}
-	saveStateReturns     struct {
+	saveStateArgsForCall []struct {
+		logger lager.Logger
+	}
+	saveStateReturns struct {
 		result1 error
 	}
-	RecoverStateStub        func() error
+	RecoverStateStub        func(logger lager.Logger) error
 	recoverStateMutex       sync.RWMutex
-	recoverStateArgsForCall []struct{}
-	recoverStateReturns     struct {
+	recoverStateArgsForCall []struct {
+		logger lager.Logger
+	}
+	recoverStateReturns struct {
 		result1 error
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeCachedDownloader) Fetch(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error) {
+func (fake *FakeCachedDownloader) Fetch(logger lager.Logger, urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (stream io.ReadCloser, size int64, err error) {
 	fake.fetchMutex.Lock()
 	fake.fetchArgsForCall = append(fake.fetchArgsForCall, struct {
+		logger     lager.Logger
 		urlToFetch *url.URL
 		cacheKey   string
 		checksum   cacheddownloader.ChecksumInfoType
 		cancelChan <-chan struct{}
-	}{urlToFetch, cacheKey, checksum, cancelChan})
-	fake.recordInvocation("Fetch", []interface{}{urlToFetch, cacheKey, checksum, cancelChan})
+	}{logger, urlToFetch, cacheKey, checksum, cancelChan})
+	fake.recordInvocation("Fetch", []interface{}{logger, urlToFetch, cacheKey, checksum, cancelChan})
 	fake.fetchMutex.Unlock()
 	if fake.FetchStub != nil {
-		return fake.FetchStub(urlToFetch, cacheKey, checksum, cancelChan)
+		return fake.FetchStub(logger, urlToFetch, cacheKey, checksum, cancelChan)
 	} else {
 		return fake.fetchReturns.result1, fake.fetchReturns.result2, fake.fetchReturns.result3
 	}
@@ -84,10 +93,10 @@ func (fake *FakeCachedDownloader) FetchCallCount() int {
 	return len(fake.fetchArgsForCall)
 }
 
-func (fake *FakeCachedDownloader) FetchArgsForCall(i int) (*url.URL, string, cacheddownloader.ChecksumInfoType, <-chan struct{}) {
+func (fake *FakeCachedDownloader) FetchArgsForCall(i int) (lager.Logger, *url.URL, string, cacheddownloader.ChecksumInfoType, <-chan struct{}) {
 	fake.fetchMutex.RLock()
 	defer fake.fetchMutex.RUnlock()
-	return fake.fetchArgsForCall[i].urlToFetch, fake.fetchArgsForCall[i].cacheKey, fake.fetchArgsForCall[i].checksum, fake.fetchArgsForCall[i].cancelChan
+	return fake.fetchArgsForCall[i].logger, fake.fetchArgsForCall[i].urlToFetch, fake.fetchArgsForCall[i].cacheKey, fake.fetchArgsForCall[i].checksum, fake.fetchArgsForCall[i].cancelChan
 }
 
 func (fake *FakeCachedDownloader) FetchReturns(result1 io.ReadCloser, result2 int64, result3 error) {
@@ -99,18 +108,19 @@ func (fake *FakeCachedDownloader) FetchReturns(result1 io.ReadCloser, result2 in
 	}{result1, result2, result3}
 }
 
-func (fake *FakeCachedDownloader) FetchAsDirectory(urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (dirPath string, size int64, err error) {
+func (fake *FakeCachedDownloader) FetchAsDirectory(logger lager.Logger, urlToFetch *url.URL, cacheKey string, checksum cacheddownloader.ChecksumInfoType, cancelChan <-chan struct{}) (dirPath string, size int64, err error) {
 	fake.fetchAsDirectoryMutex.Lock()
 	fake.fetchAsDirectoryArgsForCall = append(fake.fetchAsDirectoryArgsForCall, struct {
+		logger     lager.Logger
 		urlToFetch *url.URL
 		cacheKey   string
 		checksum   cacheddownloader.ChecksumInfoType
 		cancelChan <-chan struct{}
-	}{urlToFetch, cacheKey, checksum, cancelChan})
-	fake.recordInvocation("FetchAsDirectory", []interface{}{urlToFetch, cacheKey, checksum, cancelChan})
+	}{logger, urlToFetch, cacheKey, checksum, cancelChan})
+	fake.recordInvocation("FetchAsDirectory", []interface{}{logger, urlToFetch, cacheKey, checksum, cancelChan})
 	fake.fetchAsDirectoryMutex.Unlock()
 	if fake.FetchAsDirectoryStub != nil {
-		return fake.FetchAsDirectoryStub(urlToFetch, cacheKey, checksum, cancelChan)
+		return fake.FetchAsDirectoryStub(logger, urlToFetch, cacheKey, checksum, cancelChan)
 	} else {
 		return fake.fetchAsDirectoryReturns.result1, fake.fetchAsDirectoryReturns.result2, fake.fetchAsDirectoryReturns.result3
 	}
@@ -122,10 +132,10 @@ func (fake *FakeCachedDownloader) FetchAsDirectoryCallCount() int {
 	return len(fake.fetchAsDirectoryArgsForCall)
 }
 
-func (fake *FakeCachedDownloader) FetchAsDirectoryArgsForCall(i int) (*url.URL, string, cacheddownloader.ChecksumInfoType, <-chan struct{}) {
+func (fake *FakeCachedDownloader) FetchAsDirectoryArgsForCall(i int) (lager.Logger, *url.URL, string, cacheddownloader.ChecksumInfoType, <-chan struct{}) {
 	fake.fetchAsDirectoryMutex.RLock()
 	defer fake.fetchAsDirectoryMutex.RUnlock()
-	return fake.fetchAsDirectoryArgsForCall[i].urlToFetch, fake.fetchAsDirectoryArgsForCall[i].cacheKey, fake.fetchAsDirectoryArgsForCall[i].checksum, fake.fetchAsDirectoryArgsForCall[i].cancelChan
+	return fake.fetchAsDirectoryArgsForCall[i].logger, fake.fetchAsDirectoryArgsForCall[i].urlToFetch, fake.fetchAsDirectoryArgsForCall[i].cacheKey, fake.fetchAsDirectoryArgsForCall[i].checksum, fake.fetchAsDirectoryArgsForCall[i].cancelChan
 }
 
 func (fake *FakeCachedDownloader) FetchAsDirectoryReturns(result1 string, result2 int64, result3 error) {
@@ -137,16 +147,17 @@ func (fake *FakeCachedDownloader) FetchAsDirectoryReturns(result1 string, result
 	}{result1, result2, result3}
 }
 
-func (fake *FakeCachedDownloader) CloseDirectory(cacheKey string, directoryPath string) error {
+func (fake *FakeCachedDownloader) CloseDirectory(logger lager.Logger, cacheKey string, directoryPath string) error {
 	fake.closeDirectoryMutex.Lock()
 	fake.closeDirectoryArgsForCall = append(fake.closeDirectoryArgsForCall, struct {
+		logger        lager.Logger
 		cacheKey      string
 		directoryPath string
-	}{cacheKey, directoryPath})
-	fake.recordInvocation("CloseDirectory", []interface{}{cacheKey, directoryPath})
+	}{logger, cacheKey, directoryPath})
+	fake.recordInvocation("CloseDirectory", []interface{}{logger, cacheKey, directoryPath})
 	fake.closeDirectoryMutex.Unlock()
 	if fake.CloseDirectoryStub != nil {
-		return fake.CloseDirectoryStub(cacheKey, directoryPath)
+		return fake.CloseDirectoryStub(logger, cacheKey, directoryPath)
 	} else {
 		return fake.closeDirectoryReturns.result1
 	}
@@ -158,10 +169,10 @@ func (fake *FakeCachedDownloader) CloseDirectoryCallCount() int {
 	return len(fake.closeDirectoryArgsForCall)
 }
 
-func (fake *FakeCachedDownloader) CloseDirectoryArgsForCall(i int) (string, string) {
+func (fake *FakeCachedDownloader) CloseDirectoryArgsForCall(i int) (lager.Logger, string, string) {
 	fake.closeDirectoryMutex.RLock()
 	defer fake.closeDirectoryMutex.RUnlock()
-	return fake.closeDirectoryArgsForCall[i].cacheKey, fake.closeDirectoryArgsForCall[i].directoryPath
+	return fake.closeDirectoryArgsForCall[i].logger, fake.closeDirectoryArgsForCall[i].cacheKey, fake.closeDirectoryArgsForCall[i].directoryPath
 }
 
 func (fake *FakeCachedDownloader) CloseDirectoryReturns(result1 error) {
@@ -171,13 +182,15 @@ func (fake *FakeCachedDownloader) CloseDirectoryReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakeCachedDownloader) SaveState() error {
+func (fake *FakeCachedDownloader) SaveState(logger lager.Logger) error {
 	fake.saveStateMutex.Lock()
-	fake.saveStateArgsForCall = append(fake.saveStateArgsForCall, struct{}{})
-	fake.recordInvocation("SaveState", []interface{}{})
+	fake.saveStateArgsForCall = append(fake.saveStateArgsForCall, struct {
+		logger lager.Logger
+	}{logger})
+	fake.recordInvocation("SaveState", []interface{}{logger})
 	fake.saveStateMutex.Unlock()
 	if fake.SaveStateStub != nil {
-		return fake.SaveStateStub()
+		return fake.SaveStateStub(logger)
 	} else {
 		return fake.saveStateReturns.result1
 	}
@@ -189,6 +202,12 @@ func (fake *FakeCachedDownloader) SaveStateCallCount() int {
 	return len(fake.saveStateArgsForCall)
 }
 
+func (fake *FakeCachedDownloader) SaveStateArgsForCall(i int) lager.Logger {
+	fake.saveStateMutex.RLock()
+	defer fake.saveStateMutex.RUnlock()
+	return fake.saveStateArgsForCall[i].logger
+}
+
 func (fake *FakeCachedDownloader) SaveStateReturns(result1 error) {
 	fake.SaveStateStub = nil
 	fake.saveStateReturns = struct {
@@ -196,13 +215,15 @@ func (fake *FakeCachedDownloader) SaveStateReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakeCachedDownloader) RecoverState() error {
+func (fake *FakeCachedDownloader) RecoverState(logger lager.Logger) error {
 	fake.recoverStateMutex.Lock()
-	fake.recoverStateArgsForCall = append(fake.recoverStateArgsForCall, struct{}{})
-	fake.recordInvocation("RecoverState", []interface{}{})
+	fake.recoverStateArgsForCall = append(fake.recoverStateArgsForCall, struct {
+		logger lager.Logger
+	}{logger})
+	fake.recordInvocation("RecoverState", []interface{}{logger})
 	fake.recoverStateMutex.Unlock()
 	if fake.RecoverStateStub != nil {
-		return fake.RecoverStateStub()
+		return fake.RecoverStateStub(logger)
 	} else {
 		return fake.recoverStateReturns.result1
 	}
@@ -212,6 +233,12 @@ func (fake *FakeCachedDownloader) RecoverStateCallCount() int {
 	fake.recoverStateMutex.RLock()
 	defer fake.recoverStateMutex.RUnlock()
 	return len(fake.recoverStateArgsForCall)
+}
+
+func (fake *FakeCachedDownloader) RecoverStateArgsForCall(i int) lager.Logger {
+	fake.recoverStateMutex.RLock()
+	defer fake.recoverStateMutex.RUnlock()
+	return fake.recoverStateArgsForCall[i].logger
 }
 
 func (fake *FakeCachedDownloader) RecoverStateReturns(result1 error) {

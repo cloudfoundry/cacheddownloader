@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/cacheddownloader"
+	"code.cloudfoundry.org/lager/lagertest"
 	"github.com/cloudfoundry/systemcerts"
 	"github.com/onsi/gomega/ghttp"
 
@@ -23,17 +24,22 @@ import (
 )
 
 var _ = Describe("Downloader", func() {
-	var downloader *cacheddownloader.Downloader
-	var testServer *httptest.Server
-	var serverRequestUrls []string
-	var lock *sync.Mutex
-	var cancelChan chan struct{}
+	var (
+		downloader        *cacheddownloader.Downloader
+		testServer        *httptest.Server
+		serverRequestUrls []string
+		lock              *sync.Mutex
+		cancelChan        chan struct{}
+
+		logger *lagertest.TestLogger
+	)
 
 	createDestFile := func() (*os.File, error) {
 		return ioutil.TempFile("", "foo")
 	}
 
 	BeforeEach(func() {
+		logger = lagertest.NewTestLogger("test")
 		testServer = nil
 		downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, false, nil)
 		lock = &sync.Mutex{}
@@ -71,7 +77,7 @@ var _ = Describe("Downloader", func() {
 
 			JustBeforeEach(func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+				downloadedFile, downloadCachingInfo, downloadErr = downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 			})
 
 			Context("and contains a matching MD5 Hash in the Etag", func() {
@@ -185,7 +191,7 @@ var _ = Describe("Downloader", func() {
 				downloadedFiles := make(chan string)
 
 				go func() {
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+					downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 					errs <- err
 					downloadedFiles <- downloadedFile
 				}()
@@ -206,7 +212,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+				downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 			})
@@ -220,7 +226,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return the error", func() {
-				downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+				downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 			})
@@ -249,7 +255,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+					_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 					errs <- err
 				}()
 
@@ -278,7 +284,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			It("should return an error", func() {
-				downloadedFile, cachingInfo, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+				downloadedFile, cachingInfo, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 				Expect(err).To(HaveOccurred())
 				Expect(downloadedFile).To(BeEmpty())
 				Expect(cachingInfo).To(BeZero())
@@ -308,7 +314,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+					_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 					errs <- err
 				}()
 
@@ -324,7 +330,7 @@ var _ = Describe("Downloader", func() {
 				errs := make(chan error)
 
 				go func() {
-					_, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+					_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 					errs <- err
 				}()
 
@@ -408,7 +414,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 			JustBeforeEach(func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-				downloadedFile, _, downloadErr = downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+				downloadedFile, _, downloadErr = downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 			})
 
 			AfterEach(func() {
@@ -497,7 +503,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 			Context("when algorithm is invalid", func() {
 				It("should return an algorithm invalid error", func() {
 					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "wrong alg", Value: "some value"}
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).To(HaveOccurred())
 					Expect(err.Error()).To(ContainSubstring("algorithm invalid"))
 					Expect(downloadedFile).To(BeEmpty())
@@ -507,7 +513,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 			Context("when the value is invalid", func() {
 				It("should return a checksum invalid error", func() {
 					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "md5", Value: "wrong value"}
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).To(HaveOccurred())
 					Expect(err.Error()).To(ContainSubstring("checksum missing or invalid"))
 					Expect(downloadedFile).To(BeEmpty())
@@ -520,7 +526,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 					Expect(err).NotTo(HaveOccurred())
 
 					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "md5", Value: hexMsg}
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(downloadedFile).NotTo(BeEmpty())
 				})
@@ -530,7 +536,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 					Expect(err).NotTo(HaveOccurred())
 
 					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "sha1", Value: hexMsg}
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(downloadedFile).NotTo(BeEmpty())
 				})
@@ -540,7 +546,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 					Expect(err).NotTo(HaveOccurred())
 
 					checksum := cacheddownloader.ChecksumInfoType{Algorithm: "sha256", Value: hexMsg}
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
+					downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, checksum, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(downloadedFile).NotTo(BeEmpty())
 				})
@@ -596,6 +602,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 
 		downloadTestFile := func(cancelChan <-chan struct{}) (path string, cachingInfoOut cacheddownloader.CachingInfoType, err error) {
 			return downloader.Download(
+				logger,
 				serverUrl,
 				func() (*os.File, error) {
 					return ioutil.TempFile(tempDir, "the-file")
@@ -671,7 +678,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 				})
 
 				It("should return that it did not download", func() {
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cachedInfo, cacheddownloader.ChecksumInfoType{}, cancelChan)
+					downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cachedInfo, cacheddownloader.ChecksumInfoType{}, cancelChan)
 					Expect(downloadedFile).To(BeEmpty())
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -695,7 +702,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 				})
 
 				It("should download the file", func() {
-					downloadedFile, _, err = downloader.Download(serverUrl, createDestFile, cachedInfo, cacheddownloader.ChecksumInfoType{}, cancelChan)
+					downloadedFile, _, err = downloader.Download(logger, serverUrl, createDestFile, cachedInfo, cacheddownloader.ChecksumInfoType{}, cancelChan)
 					Expect(err).NotTo(HaveOccurred())
 
 					info, err := os.Stat(downloadedFile)
@@ -722,7 +729,7 @@ dYbCU/DMZjsv+Pt9flhj7ELLo+WKHyI767hJSq9A7IT3GzFt8iGiEAt1qj2yS0DX
 				})
 
 				It("should return false with an error", func() {
-					downloadedFile, _, err := downloader.Download(serverUrl, createDestFile, cachedInfo, cacheddownloader.ChecksumInfoType{}, cancelChan)
+					downloadedFile, _, err := downloader.Download(logger, serverUrl, createDestFile, cachedInfo, cacheddownloader.ChecksumInfoType{}, cancelChan)
 					Expect(downloadedFile).To(BeEmpty())
 					Expect(err).To(HaveOccurred())
 				})

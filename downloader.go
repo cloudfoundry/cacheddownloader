@@ -11,6 +11,8 @@ import (
 	"os"
 	"time"
 
+	"code.cloudfoundry.org/lager"
+
 	"github.com/cloudfoundry/systemcerts"
 )
 
@@ -109,6 +111,7 @@ func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time
 }
 
 func (downloader *Downloader) Download(
+	logger lager.Logger,
 	url *url.URL,
 	createDestination func() (*os.File, error),
 	cachingInfoIn CachingInfoType,

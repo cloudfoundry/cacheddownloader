@@ -10,6 +10,7 @@ import (
 
 	"code.cloudfoundry.org/archiver/compressor"
 	"code.cloudfoundry.org/archiver/extractor"
+	"code.cloudfoundry.org/lager"
 )
 
 var (
@@ -193,7 +194,7 @@ func (e *FileCacheEntry) expandedDirectory() (string, error) {
 	return e.ExpandedDirectoryPath, nil
 }
 
-func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
+func (c *FileCache) CloseDirectory(logger lager.Logger, cacheKey, dirPath string) error {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -223,13 +224,13 @@ func (c *FileCache) CloseDirectory(cacheKey, dirPath string) error {
 	return nil
 }
 
-func (c *FileCache) Add(cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (*CachedFile, error) {
+func (c *FileCache) Add(logger lager.Logger, cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (*CachedFile, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
 	oldEntry := c.Entries[cacheKey]
 
-	c.makeRoom(size, "")
+	c.makeRoom(logger, size, "")
 
 	c.Seq++
 	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.Seq)
@@ -244,18 +245,18 @@ func (c *FileCache) Add(cacheKey, sourcePath string, size int64, cachingInfo Cac
 	c.Entries[cacheKey] = newEntry
 	if oldEntry != nil {
 		oldEntry.decrementUse()
-		c.updateOldEntries(cacheKey, oldEntry)
+		c.updateOldEntries(logger, cacheKey, oldEntry)
 	}
 	return newEntry.readCloser()
 }
 
-func (c *FileCache) AddDirectory(cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (string, error) {
+func (c *FileCache) AddDirectory(logger lager.Logger, cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (string, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
 	oldEntry := c.Entries[cacheKey]
 
-	c.makeRoom(size, "")
+	c.makeRoom(logger, size, "")
 
 	c.Seq++
 	uniqueName := fmt.Sprintf("%s-%d-%d", cacheKey, time.Now().UnixNano(), c.Seq)
@@ -270,12 +271,12 @@ func (c *FileCache) AddDirectory(cacheKey, sourcePath string, size int64, cachin
 	c.Entries[cacheKey] = newEntry
 	if oldEntry != nil {
 		oldEntry.decrementUse()
-		c.updateOldEntries(cacheKey, oldEntry)
+		c.updateOldEntries(logger, cacheKey, oldEntry)
 	}
 	return newEntry.expandedDirectory()
 }
 
-func (c *FileCache) Get(cacheKey string) (*CachedFile, CachingInfoType, error) {
+func (c *FileCache) Get(logger lager.Logger, cacheKey string) (*CachedFile, CachingInfoType, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -285,7 +286,7 @@ func (c *FileCache) Get(cacheKey string) (*CachedFile, CachingInfoType, error) {
 	}
 
 	if entry.fileDoesNotExist() {
-		c.makeRoom(entry.Size, cacheKey)
+		c.makeRoom(logger, entry.Size, cacheKey)
 	}
 
 	entry.Access = time.Now()
@@ -297,7 +298,7 @@ func (c *FileCache) Get(cacheKey string) (*CachedFile, CachingInfoType, error) {
 	return readCloser, entry.CachingInfo, nil
 }
 
-func (c *FileCache) GetDirectory(cacheKey string) (string, CachingInfoType, error) {
+func (c *FileCache) GetDirectory(logger lager.Logger, cacheKey string) (string, CachingInfoType, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -309,7 +310,7 @@ func (c *FileCache) GetDirectory(cacheKey string) (string, CachingInfoType, erro
 	// Was it expanded before
 	if entry.dirDoesNotExist() {
 		// Do we have enough room to double the size?
-		c.makeRoom(entry.Size, cacheKey)
+		c.makeRoom(logger, entry.Size, cacheKey)
 		entry.Size = entry.Size * 2
 	}
 
@@ -322,22 +323,22 @@ func (c *FileCache) GetDirectory(cacheKey string) (string, CachingInfoType, erro
 	return dir, entry.CachingInfo, nil
 }
 
-func (c *FileCache) Remove(cacheKey string) {
+func (c *FileCache) Remove(logger lager.Logger, cacheKey string) {
 	lock.Lock()
-	c.remove(cacheKey)
+	c.remove(logger, cacheKey)
 	lock.Unlock()
 }
 
-func (c *FileCache) remove(cacheKey string) {
+func (c *FileCache) remove(logger lager.Logger, cacheKey string) {
 	entry := c.Entries[cacheKey]
 	if entry != nil {
 		entry.decrementUse()
-		c.updateOldEntries(cacheKey, entry)
+		c.updateOldEntries(logger, cacheKey, entry)
 		delete(c.Entries, cacheKey)
 	}
 }
 
-func (c *FileCache) updateOldEntries(cacheKey string, entry *FileCacheEntry) {
+func (c *FileCache) updateOldEntries(logger lager.Logger, cacheKey string, entry *FileCacheEntry) {
 	if entry != nil {
 		if !entry.inUse() && entry.ExpandedDirectoryPath != "" {
 			// put it in the oldEntries Cache since somebody may still be using the directory
@@ -349,8 +350,8 @@ func (c *FileCache) updateOldEntries(cacheKey string, entry *FileCacheEntry) {
 	}
 }
 
-func (c *FileCache) makeRoom(size int64, excludedCacheKey string) {
-	usedSpace := c.usedSpace()
+func (c *FileCache) makeRoom(logger lager.Logger, size int64, excludedCacheKey string) {
+	usedSpace := c.usedSpace(logger)
 	for c.maxSizeInBytes < usedSpace+size {
 		var oldestEntry *FileCacheEntry
 		oldestAccessTime, oldestCacheKey := time.Now(), ""
@@ -368,13 +369,13 @@ func (c *FileCache) makeRoom(size int64, excludedCacheKey string) {
 		}
 
 		usedSpace -= oldestEntry.Size
-		c.remove(oldestCacheKey)
+		c.remove(logger, oldestCacheKey)
 	}
 
 	return
 }
 
-func (c *FileCache) usedSpace() int64 {
+func (c *FileCache) usedSpace(logger lager.Logger) int64 {
 	space := int64(0)
 	for _, f := range c.Entries {
 		space += f.Size

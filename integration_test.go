@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/cacheddownloader"
+	"code.cloudfoundry.org/lager/lagertest"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -28,9 +29,11 @@ var _ = Describe("Integration", func() {
 		downloadTimeout     time.Duration = time.Second
 		checksum            cacheddownloader.ChecksumInfoType
 		url                 *url.URL
+		logger              *lagertest.TestLogger
 	)
 
 	BeforeEach(func() {
+		logger = lagertest.NewTestLogger("test")
 		var err error
 
 		serverPath, err = ioutil.TempDir("", "cached_downloader_integration_server")
@@ -64,7 +67,7 @@ var _ = Describe("Integration", func() {
 		url, err := url.Parse(server.URL + "/" + fileToFetch)
 		Expect(err).NotTo(HaveOccurred())
 
-		reader, _, err := cachedDownloader.Fetch(url, "the-cache-key", checksum, make(chan struct{}))
+		reader, _, err := cachedDownloader.Fetch(logger, url, "the-cache-key", checksum, make(chan struct{}))
 		Expect(err).NotTo(HaveOccurred())
 		defer reader.Close()
 
@@ -87,10 +90,10 @@ var _ = Describe("Integration", func() {
 		url, err := url.Parse(server.URL + "/" + fileToFetch)
 		Expect(err).NotTo(HaveOccurred())
 
-		dirPath, _, err := cachedDownloader.FetchAsDirectory(url, "tar-file-cache-key", checksum, make(chan struct{}))
+		dirPath, _, err := cachedDownloader.FetchAsDirectory(logger, url, "tar-file-cache-key", checksum, make(chan struct{}))
 		Expect(err).NotTo(HaveOccurred())
 		defer func() {
-			err := cachedDownloader.CloseDirectory("tar-file-cache-key", dirPath)
+			err := cachedDownloader.CloseDirectory(logger, "tar-file-cache-key", dirPath)
 			Expect(err).NotTo(HaveOccurred())
 		}()
 
