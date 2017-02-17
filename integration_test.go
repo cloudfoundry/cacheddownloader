@@ -17,13 +17,15 @@ import (
 
 var _ = Describe("Integration", func() {
 	var (
+		cache               *cacheddownloader.FileCache
+		downloader          *cacheddownloader.Downloader
+		cachedDownloader    cacheddownloader.CachedDownloader
 		server              *httptest.Server
 		serverPath          string
 		cachedPath          string
 		uncachedPath        string
 		cacheMaxSizeInBytes int64         = 32000
 		downloadTimeout     time.Duration = time.Second
-		downloader          cacheddownloader.CachedDownloader
 		checksum            cacheddownloader.ChecksumInfoType
 		url                 *url.URL
 	)
@@ -46,7 +48,9 @@ var _ = Describe("Integration", func() {
 		url, err = url.Parse(server.URL + "/file")
 		Expect(err).NotTo(HaveOccurred())
 
-		downloader = cacheddownloader.New(cachedPath, uncachedPath, cacheMaxSizeInBytes, downloadTimeout, 10, false, nil, cacheddownloader.NoopTransform)
+		cache = cacheddownloader.NewCache(cachedPath, cacheMaxSizeInBytes)
+		downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, false, nil)
+		cachedDownloader = cacheddownloader.New(uncachedPath, downloader, cache, cacheddownloader.NoopTransform)
 	})
 
 	AfterEach(func() {
@@ -60,7 +64,7 @@ var _ = Describe("Integration", func() {
 		url, err := url.Parse(server.URL + "/" + fileToFetch)
 		Expect(err).NotTo(HaveOccurred())
 
-		reader, _, err := downloader.Fetch(url, "the-cache-key", checksum, make(chan struct{}))
+		reader, _, err := cachedDownloader.Fetch(url, "the-cache-key", checksum, make(chan struct{}))
 		Expect(err).NotTo(HaveOccurred())
 		defer reader.Close()
 
@@ -83,10 +87,10 @@ var _ = Describe("Integration", func() {
 		url, err := url.Parse(server.URL + "/" + fileToFetch)
 		Expect(err).NotTo(HaveOccurred())
 
-		dirPath, _, err := downloader.FetchAsDirectory(url, "tar-file-cache-key", checksum, make(chan struct{}))
+		dirPath, _, err := cachedDownloader.FetchAsDirectory(url, "tar-file-cache-key", checksum, make(chan struct{}))
 		Expect(err).NotTo(HaveOccurred())
 		defer func() {
-			err := downloader.CloseDirectory("tar-file-cache-key", dirPath)
+			err := cachedDownloader.CloseDirectory("tar-file-cache-key", dirPath)
 			Expect(err).NotTo(HaveOccurred())
 		}()
 

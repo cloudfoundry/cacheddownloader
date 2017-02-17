@@ -265,6 +265,7 @@ func (c *FileCache) AddDirectory(cacheKey, sourcePath string, size int64, cachin
 	if err != nil {
 		return "", err
 	}
+
 	newEntry := newFileCacheEntry(cachePath, size, cachingInfo)
 	c.Entries[cacheKey] = newEntry
 	if oldEntry != nil {

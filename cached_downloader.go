@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
-
-	"github.com/cloudfoundry/systemcerts"
 )
 
 // called after a new object has entered the cache.
@@ -95,16 +93,22 @@ func (c CachingInfoType) Equal(other CachingInfoType) bool {
 
 // A transformer function can be used to do post-download
 // processing on the file before it is stored in the cache.
-func New(cachedPath string, uncachedPath string, maxSizeInBytes int64, downloadTimeout time.Duration, maxConcurrentDownloads int, skipSSLVerification bool, caCertPool *systemcerts.CertPool, transformer CacheTransformer) *cachedDownloader {
-	os.MkdirAll(cachedPath, 0770)
+func New(
+	uncachedPath string,
+	downloader *Downloader,
+	cache *FileCache,
+	transformer CacheTransformer,
+) *cachedDownloader {
+	os.MkdirAll(cache.CachedPath, 0770)
 	return &cachedDownloader{
-		downloader:    NewDownloader(downloadTimeout, maxConcurrentDownloads, skipSSLVerification, caCertPool),
+		cache:         cache,
+		cacheLocation: filepath.Join(cache.CachedPath, "saved_cache.json"),
 		uncachedPath:  uncachedPath,
-		cache:         NewCache(cachedPath, maxSizeInBytes),
+		downloader:    downloader,
 		transformer:   transformer,
-		lock:          &sync.Mutex{},
-		inProgress:    map[string]chan struct{}{},
-		cacheLocation: filepath.Join(cachedPath, "saved_cache.json"),
+
+		lock:       &sync.Mutex{},
+		inProgress: map[string]chan struct{}{},
 	}
 }
 
