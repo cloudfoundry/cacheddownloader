@@ -195,8 +195,12 @@ func (e *FileCacheEntry) expandedDirectory() (string, error) {
 }
 
 func (c *FileCache) CloseDirectory(logger lager.Logger, cacheKey, dirPath string) error {
+	logger = logger.Session("file-cache.close-directory", lager.Data{"cache_key": cacheKey, "dir_path": dirPath})
 	lock.Lock()
 	defer lock.Unlock()
+
+	logger.Info("starting")
+	defer logger.Info("finished")
 
 	entry := c.Entries[cacheKey]
 	if entry != nil && entry.ExpandedDirectoryPath == dirPath {
@@ -225,8 +229,12 @@ func (c *FileCache) CloseDirectory(logger lager.Logger, cacheKey, dirPath string
 }
 
 func (c *FileCache) Add(logger lager.Logger, cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (*CachedFile, error) {
+	logger = logger.Session("file-cache.add", lager.Data{"cache_key": cacheKey, "source_path": sourcePath, "size": size})
 	lock.Lock()
 	defer lock.Unlock()
+
+	logger.Info("starting")
+	defer logger.Info("finished")
 
 	oldEntry := c.Entries[cacheKey]
 
@@ -251,8 +259,12 @@ func (c *FileCache) Add(logger lager.Logger, cacheKey, sourcePath string, size i
 }
 
 func (c *FileCache) AddDirectory(logger lager.Logger, cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (string, error) {
+	logger = logger.Session("file-cache.add-directory", lager.Data{"cache_key": cacheKey, "source_path": sourcePath, "size": size})
 	lock.Lock()
 	defer lock.Unlock()
+
+	logger.Info("starting")
+	defer logger.Info("finished")
 
 	oldEntry := c.Entries[cacheKey]
 
@@ -277,8 +289,12 @@ func (c *FileCache) AddDirectory(logger lager.Logger, cacheKey, sourcePath strin
 }
 
 func (c *FileCache) Get(logger lager.Logger, cacheKey string) (*CachedFile, CachingInfoType, error) {
+	logger = logger.Session("file-cache.get", lager.Data{"cache_key": cacheKey})
 	lock.Lock()
 	defer lock.Unlock()
+
+	logger.Info("starting")
+	defer logger.Info("finished")
 
 	entry := c.Entries[cacheKey]
 	if entry == nil {
@@ -299,8 +315,12 @@ func (c *FileCache) Get(logger lager.Logger, cacheKey string) (*CachedFile, Cach
 }
 
 func (c *FileCache) GetDirectory(logger lager.Logger, cacheKey string) (string, CachingInfoType, error) {
+	logger = logger.Session("file-cache.get-directory", lager.Data{"cache_key": cacheKey})
 	lock.Lock()
 	defer lock.Unlock()
+
+	logger.Info("starting")
+	defer logger.Info("finished")
 
 	entry := c.Entries[cacheKey]
 	if entry == nil {
@@ -324,9 +344,13 @@ func (c *FileCache) GetDirectory(logger lager.Logger, cacheKey string) (string, 
 }
 
 func (c *FileCache) Remove(logger lager.Logger, cacheKey string) {
+	logger = logger.Session("file-cache.get-directory", lager.Data{"cache_key": cacheKey})
+
 	lock.Lock()
+	logger.Info("starting")
 	c.remove(logger, cacheKey)
 	lock.Unlock()
+	logger.Info("finished")
 }
 
 func (c *FileCache) remove(logger lager.Logger, cacheKey string) {
