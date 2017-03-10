@@ -71,7 +71,7 @@ var _ = Describe("File cache", func() {
 		transformer = cacheddownloader.NoopTransform
 
 		cache = cacheddownloader.NewCache(cachedPath, maxSizeInBytes)
-		downloader = cacheddownloader.NewDownloader(1*time.Second, MAX_CONCURRENT_DOWNLOADS, false, nil)
+		downloader = cacheddownloader.NewDownloader(1*time.Second, MAX_CONCURRENT_DOWNLOADS, nil)
 		cachedDownloader = cacheddownloader.New(uncachedPath, downloader, cache, transformer)
 		server = ghttp.NewServer()
 
@@ -1430,7 +1430,11 @@ EUO0ukpTwEIl6wIhAMbGqZK3zAAFdq8DD2jPx+UJXnh0rnOkZBzDtJ6/iN69AiEA
 			url, err = Url.Parse(server.URL() + "/my_file")
 			Expect(err).NotTo(HaveOccurred())
 
-			downloader = cacheddownloader.NewDownloader(time.Second, MAX_CONCURRENT_DOWNLOADS, false, caCertPool)
+			tlsConfig := &tls.Config{
+				RootCAs: caCertPool.AsX509CertPool(),
+			}
+
+			downloader = cacheddownloader.NewDownloader(time.Second, MAX_CONCURRENT_DOWNLOADS, tlsConfig)
 			cachedDownloader = cacheddownloader.New(uncachedPath, downloader, cache, transformer)
 			_, _, err = cachedDownloader.Fetch(logger, url, "", checksum, cancelChan)
 			Expect(err).NotTo(HaveOccurred())

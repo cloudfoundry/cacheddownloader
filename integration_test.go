@@ -52,7 +52,7 @@ var _ = Describe("Integration", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		cache = cacheddownloader.NewCache(cachedPath, cacheMaxSizeInBytes)
-		downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, false, nil)
+		downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, nil)
 		cachedDownloader = cacheddownloader.New(uncachedPath, downloader, cache, cacheddownloader.NoopTransform)
 	})
 
