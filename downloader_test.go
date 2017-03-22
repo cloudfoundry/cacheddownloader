@@ -363,7 +363,6 @@ var _ = Describe("Downloader", func() {
 				)
 				Expect(err).NotTo(HaveOccurred())
 				testServer.TLS = tlsConfig
-				testServer.StartTLS()
 
 				downloaderTLS = &tls.Config{
 					RootCAs:            systemcerts.NewCertPool().AsX509CertPool(),
@@ -372,6 +371,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			JustBeforeEach(func() {
+				testServer.StartTLS()
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
 				downloadedFile, _, downloadErr = downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 			})
@@ -421,6 +421,25 @@ var _ = Describe("Downloader", func() {
 				})
 			})
 
+			Context("and server does not require client auth", func() {
+				BeforeEach(func() {
+					testServer.TLS.ClientAuth = tls.NoClientCert
+
+					goodCA, err := ioutil.ReadFile("fixtures/goodCA.crt")
+					Expect(err).NotTo(HaveOccurred())
+
+					ok := downloaderTLS.RootCAs.AppendCertsFromPEM(goodCA)
+					Expect(ok).To(BeTrue())
+
+					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, downloaderTLS)
+				})
+
+				It("does not need a client certificate and succeeds", func() {
+					Expect(downloadErr).NotTo(HaveOccurred())
+					Expect(downloadedFile).NotTo(BeEmpty())
+				})
+			})
+
 			Context("and setting multiple CAs, including the correct one", func() {
 				BeforeEach(func() {
 
@@ -453,7 +472,7 @@ var _ = Describe("Downloader", func() {
 					downloaderTLS, err := cfhttp.NewTLSConfig(
 						"fixtures/goodClient.crt",
 						"fixtures/goodClient.key",
-						"fixtures/goodCA.crt",
+						"fixtures/badCA.crt",
 					)
 
 					Expect(err).NotTo(HaveOccurred())
