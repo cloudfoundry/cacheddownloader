@@ -24,6 +24,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const (
+	downloadTimeout = 1 * time.Second
+)
+
 var _ = Describe("Downloader", func() {
 	var (
 		downloader        *cacheddownloader.Downloader
@@ -42,7 +46,7 @@ var _ = Describe("Downloader", func() {
 	BeforeEach(func() {
 		logger = lagertest.NewTestLogger("test")
 		testServer = nil
-		downloader = cacheddownloader.NewDownloader(200*time.Millisecond, 10, nil)
+		downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, nil)
 		lock = &sync.Mutex{}
 		cancelChan = make(chan struct{}, 0)
 	})
@@ -393,7 +397,7 @@ var _ = Describe("Downloader", func() {
 
 					Expect(err).NotTo(HaveOccurred())
 
-					downloader = cacheddownloader.NewDownloader(100*time.Millisecond, 10, downloaderTLS)
+					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
 				})
 
 				It("succeeds the download", func() {
@@ -412,7 +416,7 @@ var _ = Describe("Downloader", func() {
 
 					Expect(err).NotTo(HaveOccurred())
 
-					downloader = cacheddownloader.NewDownloader(200*time.Millisecond, 10, downloaderTLS)
+					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
 				})
 
 				It("fails the download", func() {
@@ -431,7 +435,7 @@ var _ = Describe("Downloader", func() {
 					ok := downloaderTLS.RootCAs.AppendCertsFromPEM(goodCA)
 					Expect(ok).To(BeTrue())
 
-					downloader = cacheddownloader.NewDownloader(200*time.Millisecond, 10, downloaderTLS)
+					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
 				})
 
 				It("does not need a client certificate and succeeds", func() {
@@ -457,7 +461,7 @@ var _ = Describe("Downloader", func() {
 					ok := downloaderTLS.RootCAs.AppendCertsFromPEM(goodCA)
 					Expect(ok).To(BeTrue())
 
-					downloader = cacheddownloader.NewDownloader(200*time.Millisecond, 10, downloaderTLS)
+					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
 				})
 
 				It("succeeds the download", func() {
@@ -479,7 +483,7 @@ var _ = Describe("Downloader", func() {
 
 					downloaderTLS.InsecureSkipVerify = true
 
-					downloader = cacheddownloader.NewDownloader(200*time.Millisecond, 10, downloaderTLS)
+					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
 				})
 
 				It("succeeds without doing checking certificate validity", func() {
@@ -491,7 +495,7 @@ var _ = Describe("Downloader", func() {
 			// look into this and verify
 			Context("without any trusted CAs", func() {
 				BeforeEach(func() {
-					downloader = cacheddownloader.NewDownloader(200*time.Millisecond, 10, nil)
+					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, nil)
 				})
 
 				It("fails the download", func() {
@@ -502,7 +506,7 @@ var _ = Describe("Downloader", func() {
 
 			Context("without a certificate", func() {
 				BeforeEach(func() {
-					downloader = cacheddownloader.NewDownloader(200*time.Millisecond, 10, downloaderTLS)
+					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
 				})
 
 				It("succeeds without doing checking certificate validity", func() {
@@ -522,7 +526,7 @@ var _ = Describe("Downloader", func() {
 
 					Expect(err).NotTo(HaveOccurred())
 
-					downloader = cacheddownloader.NewDownloader(200*time.Millisecond, 10, downloaderTLS)
+					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
 				})
 
 				It("fails the download", func() {
@@ -609,7 +613,7 @@ var _ = Describe("Downloader", func() {
 			barrier = make(chan interface{}, 1)
 			results = make(chan bool, 1)
 
-			downloader = cacheddownloader.NewDownloader(1*time.Second, 1, nil)
+			downloader = cacheddownloader.NewDownloader(downloadTimeout, 1, nil)
 
 			var err error
 			tempDir, err = ioutil.TempDir("", "temp-dl-dir")
