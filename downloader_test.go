@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	downloadTimeout = 1 * time.Second
+	downloadTimeout = 500 * time.Millisecond
 )
 
 var _ = Describe("Downloader", func() {
