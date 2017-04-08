@@ -184,7 +184,7 @@ var _ = Describe("Downloader", func() {
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					requestInitiated <- struct{}{}
 
-					time.Sleep(300 * time.Millisecond)
+					time.Sleep(downloadTimeout * 2)
 					fmt.Fprint(w, "Hello, client")
 				}))
 
@@ -613,7 +613,7 @@ var _ = Describe("Downloader", func() {
 			barrier = make(chan interface{}, 1)
 			results = make(chan bool, 1)
 
-			downloader = cacheddownloader.NewDownloader(downloadTimeout, 1, nil)
+			downloader = cacheddownloader.NewDownloader(1*time.Second, 1, nil)
 
 			var err error
 			tempDir, err = ioutil.TempDir("", "temp-dl-dir")
