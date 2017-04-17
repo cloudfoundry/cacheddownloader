@@ -972,7 +972,7 @@ func recursiveList(dir string) []string {
 	filepath.Walk(dir, func(path string, _ os.FileInfo, _ error) error {
 		path = strings.TrimPrefix(path, dir)
 		if path != "" {
-			paths = append(paths, path)
+			paths = append(paths, filepath.ToSlash(path))
 		}
 		return nil
 	})
