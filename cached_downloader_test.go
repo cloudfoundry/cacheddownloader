@@ -1382,33 +1382,10 @@ var _ = Describe("File cache", func() {
 	})
 
 	Context("when passing a CA cert pool", func() {
-		var (
-			localhostCert = []byte(`-----BEGIN CERTIFICATE-----
-MIIBdzCCASOgAwIBAgIBADALBgkqhkiG9w0BAQUwEjEQMA4GA1UEChMHQWNtZSBD
-bzAeFw03MDAxMDEwMDAwMDBaFw00OTEyMzEyMzU5NTlaMBIxEDAOBgNVBAoTB0Fj
-bWUgQ28wWjALBgkqhkiG9w0BAQEDSwAwSAJBAN55NcYKZeInyTuhcCwFMhDHCmwa
-IUSdtXdcbItRB/yfXGBhiex00IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEA
-AaNoMGYwDgYDVR0PAQH/BAQDAgCkMBMGA1UdJQQMMAoGCCsGAQUFBwMBMA8GA1Ud
-EwEB/wQFMAMBAf8wLgYDVR0RBCcwJYILZXhhbXBsZS5jb22HBH8AAAGHEAAAAAAA
-AAAAAAAAAAAAAAEwCwYJKoZIhvcNAQEFA0EAAoQn/ytgqpiLcZu9XKbCJsJcvkgk
-Se6AbGXgSlq+ZCEVo0qIwSgeBqmsJxUu7NCSOwVJLYNEBO2DtIxoYVk+MA==
------END CERTIFICATE-----`)
-
-			localhostKey = []byte(`-----BEGIN RSA PRIVATE KEY-----
-MIIBPAIBAAJBAN55NcYKZeInyTuhcCwFMhDHCmwaIUSdtXdcbItRB/yfXGBhiex0
-0IaLXQnSU+QZPRZWYqeTEbFSgihqi1PUDy8CAwEAAQJBAQdUx66rfh8sYsgfdcvV
-NoafYpnEcB5s4m/vSVe6SU7dCK6eYec9f9wpT353ljhDUHq3EbmE4foNzJngh35d
-AekCIQDhRQG5Li0Wj8TM4obOnnXUXf1jRv0UkzE9AHWLG5q3AwIhAPzSjpYUDjVW
-MCUXgckTpKCuGwbJk7424Nb8bLzf3kllAiA5mUBgjfr/WtFSJdWcPQ4Zt9KTMNKD
-EUO0ukpTwEIl6wIhAMbGqZK3zAAFdq8DD2jPx+UJXnh0rnOkZBzDtJ6/iN69AiEA
-1Aq8MJgTaYsDQWyU/hDq5YkDJc9e9DSCvUIzqxQWMQE=
------END RSA PRIVATE KEY-----`)
-		)
-
 		It("uses it", func() {
 			server.Close()
 			server = ghttp.NewUnstartedServer()
-			cert, err := tls.X509KeyPair(localhostCert, localhostKey)
+			cert, err := tls.LoadX509KeyPair("fixtures/localhost.crt", "fixtures/localhost.key")
 			Expect(err).NotTo(HaveOccurred())
 
 			server.HTTPTestServer.TLS = &tls.Config{
@@ -1424,7 +1401,9 @@ EUO0ukpTwEIl6wIhAMbGqZK3zAAFdq8DD2jPx+UJXnh0rnOkZBzDtJ6/iN69AiEA
 			))
 
 			caCertPool := systemcerts.NewCertPool()
-			ok := caCertPool.AppendCertsFromPEM(localhostCert)
+			goodCACert, err := ioutil.ReadFile("fixtures/goodCA.crt")
+			Expect(err).NotTo(HaveOccurred())
+			ok := caCertPool.AppendCertsFromPEM(goodCACert)
 			Expect(ok).To(BeTrue())
 
 			url, err = Url.Parse(server.URL() + "/my_file")
