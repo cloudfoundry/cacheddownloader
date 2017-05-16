@@ -17,7 +17,7 @@ import (
 	"code.cloudfoundry.org/cacheddownloader"
 	"code.cloudfoundry.org/cfhttp"
 	"code.cloudfoundry.org/lager/lagertest"
-	"github.com/cloudfoundry/systemcerts"
+	"code.cloudfoundry.org/systemcerts"
 	"github.com/onsi/gomega/ghttp"
 
 	. "github.com/onsi/ginkgo"
