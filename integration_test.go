@@ -97,9 +97,13 @@ var _ = Describe("Integration", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}()
 
+		// For some reason the first stat changes the mod time on Windows.
+		// Call this so that we have predictable mod times on Windows
+		os.Stat(dirPath)
+
 		cacheContents, err := ioutil.ReadDir(cachedPath)
-		Expect(cacheContents).To(HaveLen(1))
 		Expect(err).NotTo(HaveOccurred())
+		Expect(cacheContents).To(HaveLen(1))
 
 		// ReadDir sorts by file name, so the tarfile should come before the directory
 		Expect(cacheContents[0].Mode().IsDir()).To(BeTrue())
@@ -145,7 +149,8 @@ var _ = Describe("Integration", func() {
 			tarByteBuffer := createTarBuffer("original", 0)
 			file, err := os.Create(filepath.Join(serverPath, "tarfile"))
 			Expect(err).NotTo(HaveOccurred())
-			tarByteBuffer.WriteTo(file)
+			_, err = tarByteBuffer.WriteTo(file)
+			Expect(err).NotTo(HaveOccurred())
 
 			// fetch directory once
 			dirPath, modTimeBefore := fetchAsDirectory("tarfile")
@@ -164,7 +169,8 @@ var _ = Describe("Integration", func() {
 			tarByteBuffer = createTarBuffer("modified", 0)
 			file, err = os.Create(filepath.Join(serverPath, "tarfile"))
 			Expect(err).NotTo(HaveOccurred())
-			tarByteBuffer.WriteTo(file)
+			_, err = tarByteBuffer.WriteTo(file)
+			Expect(err).NotTo(HaveOccurred())
 
 			// download again and we should get an untarred file with modified contents
 			dirPath, _ = fetchAsDirectory("tarfile")
