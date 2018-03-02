@@ -3,7 +3,6 @@ package cacheddownloader_test
 import (
 	"bytes"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -18,6 +17,7 @@ import (
 	"code.cloudfoundry.org/cacheddownloader"
 	"code.cloudfoundry.org/cfhttp"
 	"code.cloudfoundry.org/lager/lagertest"
+	"code.cloudfoundry.org/systemcerts"
 	"github.com/onsi/gomega/ghttp"
 
 	. "github.com/onsi/ginkgo"
@@ -369,7 +369,7 @@ var _ = Describe("Downloader", func() {
 				testServer.TLS = tlsConfig
 
 				downloaderTLS = &tls.Config{
-					RootCAs:            x509.NewCertPool(),
+					RootCAs:            systemcerts.NewCertPool().AsX509CertPool(),
 					InsecureSkipVerify: false,
 				}
 			})
