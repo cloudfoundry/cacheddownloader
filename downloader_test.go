@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/cacheddownloader"
-	"code.cloudfoundry.org/cfhttp"
 	"code.cloudfoundry.org/lager/lagertest"
 	"code.cloudfoundry.org/systemcerts"
+	"code.cloudfoundry.org/tlsconfig"
 	"github.com/onsi/gomega/ghttp"
 
 	. "github.com/onsi/ginkgo"
@@ -371,11 +371,10 @@ var _ = Describe("Downloader", func() {
 					fmt.Fprint(w, "Hello, client")
 				}))
 
-				tlsConfig, err := cfhttp.NewTLSConfig(
-					"fixtures/server.crt",
-					"fixtures/server.key",
-					"fixtures/goodCA.crt",
-				)
+				tlsConfig, err := tlsconfig.Build(
+					tlsconfig.WithInternalServiceDefaults(),
+					tlsconfig.WithIdentityFromFile("fixtures/server.crt", "fixtures/server.key"),
+				).Server(tlsconfig.WithClientAuthenticationFromFile("fixtures/goodCA.crt"))
 				Expect(err).NotTo(HaveOccurred())
 				testServer.TLS = tlsConfig
 
@@ -400,12 +399,10 @@ var _ = Describe("Downloader", func() {
 
 			Context("and setting the correct CA", func() {
 				BeforeEach(func() {
-					downloaderTLS, err := cfhttp.NewTLSConfig(
-						"fixtures/goodClient.crt",
-						"fixtures/goodClient.key",
-						"fixtures/goodCA.crt",
-					)
-
+					downloaderTLS, err := tlsconfig.Build(
+						tlsconfig.WithInternalServiceDefaults(),
+						tlsconfig.WithIdentityFromFile("fixtures/goodClient.crt", "fixtures/goodClient.key"),
+					).Client(tlsconfig.WithAuthorityFromFile("fixtures/goodCA.crt"))
 					Expect(err).NotTo(HaveOccurred())
 
 					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
@@ -419,12 +416,10 @@ var _ = Describe("Downloader", func() {
 
 			Context("and setting the incorrect CA", func() {
 				BeforeEach(func() {
-					downloaderTLS, err := cfhttp.NewTLSConfig(
-						"fixtures/goodClient.crt",
-						"fixtures/goodClient.key",
-						"fixtures/badCA.crt",
-					)
-
+					downloaderTLS, err := tlsconfig.Build(
+						tlsconfig.WithInternalServiceDefaults(),
+						tlsconfig.WithIdentityFromFile("fixtures/goodClient.crt", "fixtures/goodClient.key"),
+					).Client(tlsconfig.WithAuthorityFromFile("fixtures/badCA.crt"))
 					Expect(err).NotTo(HaveOccurred())
 
 					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
@@ -458,12 +453,10 @@ var _ = Describe("Downloader", func() {
 			Context("and setting multiple CAs, including the correct one", func() {
 				BeforeEach(func() {
 
-					downloaderTLS, err := cfhttp.NewTLSConfig(
-						"fixtures/goodClient.crt",
-						"fixtures/goodClient.key",
-						"fixtures/badCA.crt",
-					)
-
+					downloaderTLS, err := tlsconfig.Build(
+						tlsconfig.WithInternalServiceDefaults(),
+						tlsconfig.WithIdentityFromFile("fixtures/goodClient.crt", "fixtures/goodClient.key"),
+					).Client(tlsconfig.WithAuthorityFromFile("fixtures/badCA.crt"))
 					Expect(err).NotTo(HaveOccurred())
 
 					goodCA, err := ioutil.ReadFile("fixtures/goodCA.crt")
@@ -484,12 +477,10 @@ var _ = Describe("Downloader", func() {
 			Context("and skipping certificate verification", func() {
 				BeforeEach(func() {
 
-					downloaderTLS, err := cfhttp.NewTLSConfig(
-						"fixtures/goodClient.crt",
-						"fixtures/goodClient.key",
-						"fixtures/badCA.crt",
-					)
-
+					downloaderTLS, err := tlsconfig.Build(
+						tlsconfig.WithInternalServiceDefaults(),
+						tlsconfig.WithIdentityFromFile("fixtures/goodClient.crt", "fixtures/goodClient.key"),
+					).Client(tlsconfig.WithAuthorityFromFile("fixtures/badCA.crt"))
 					Expect(err).NotTo(HaveOccurred())
 
 					downloaderTLS.InsecureSkipVerify = true
@@ -529,12 +520,10 @@ var _ = Describe("Downloader", func() {
 			Context("with an incorrect certificate", func() {
 				BeforeEach(func() {
 
-					downloaderTLS, err := cfhttp.NewTLSConfig(
-						"fixtures/badClient.crt",
-						"fixtures/badClient.key",
-						"fixtures/badCA.crt",
-					)
-
+					downloaderTLS, err := tlsconfig.Build(
+						tlsconfig.WithInternalServiceDefaults(),
+						tlsconfig.WithIdentityFromFile("fixtures/badClient.crt", "fixtures/badClient.key"),
+					).Client(tlsconfig.WithAuthorityFromFile("fixtures/badCA.crt"))
 					Expect(err).NotTo(HaveOccurred())
 
 					downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, downloaderTLS)
