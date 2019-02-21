@@ -225,6 +225,10 @@ var _ = Describe("File cache", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(string(content)).To(Equal("hello tmp"))
 					})
+
+					It("should remove any temporary assets generated along the way", func() {
+						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					})
 				})
 			})
 

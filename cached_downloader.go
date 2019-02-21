@@ -382,6 +382,7 @@ func (c *cachedDownloader) populateCache(
 	if err != nil {
 		return download{}, false, 0, err
 	}
+	defer os.Remove(filename)
 
 	cachedFile, err := ioutil.TempFile(c.uncachedPath, "transformed")
 	if err != nil {
@@ -395,7 +396,6 @@ func (c *cachedDownloader) populateCache(
 
 	cachedSize, err := transformer(filename, cachedFile.Name())
 	if err != nil {
-		// os.Remove(filename)
 		return download{}, false, 0, err
 	}
 
