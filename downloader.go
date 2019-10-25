@@ -100,7 +100,7 @@ func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time
 	}
 
 	return &Downloader{
-		client: client,
+		client:                    client,
 		concurrentDownloadBarrier: make(chan struct{}, maxConcurrentDownloads),
 	}
 }
