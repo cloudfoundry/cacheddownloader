@@ -37,6 +37,7 @@ type FileCacheEntry struct {
 	ExpandedDirectoryPath string
 	directoryInUseCount   int
 	fileInUseCount        int
+	isMarkedAsRemoved     bool
 }
 
 func NewCache(dir string, maxSizeInBytes int64) *FileCache {
@@ -63,9 +64,9 @@ func (e *FileCacheEntry) inUse() bool {
 	return e.directoryInUseCount > 0 || e.fileInUseCount > 0
 }
 
-func (e *FileCacheEntry) decrementUse() {
-	e.decrementFileInUseCount()
-	e.decrementDirectoryInUseCount()
+func (e *FileCacheEntry) validateCacheEntry() {
+	e.validateFile()
+	e.validateDirectory()
 }
 
 func (e *FileCacheEntry) incrementDirectoryInUseCount() {
@@ -75,9 +76,15 @@ func (e *FileCacheEntry) incrementDirectoryInUseCount() {
 func (e *FileCacheEntry) decrementDirectoryInUseCount() {
 	e.directoryInUseCount--
 
-	// Delete the directory if the tarball is the only asset
-	// being used or if the directory has been removed (in use count -1)
-	if e.directoryInUseCount < 0 || (e.directoryInUseCount == 0 && e.fileInUseCount > 0) {
+	e.validateDirectory()
+}
+
+func (e *FileCacheEntry) validateDirectory() {
+	// once the directory is NOT in use (e.directoryInUseCount == 0), delete the directory in ANY of bellow conditions:
+	// if the entry is marked as removed (e.isMarkedAsRemoved is true)
+	// OR
+	// if the tarball is in use (e.fileInUseCount > 0)
+	if e.directoryInUseCount == 0 && (e.isMarkedAsRemoved || e.fileInUseCount > 0) {
 		err := os.RemoveAll(e.ExpandedDirectoryPath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Unable to delete cached directory", err)
@@ -97,9 +104,15 @@ func (e *FileCacheEntry) incrementFileInUseCount() {
 func (e *FileCacheEntry) decrementFileInUseCount() {
 	e.fileInUseCount--
 
-	// Delete the file if the file is not being used and there is
-	// a directory of if the file has been removed (in use count -1)
-	if e.fileInUseCount < 0 || (e.fileInUseCount == 0 && e.directoryInUseCount > 0) {
+	e.validateFile()
+}
+
+func (e *FileCacheEntry) validateFile() {
+	// once the file is NOT in use (e.fileInUseCount == 0), delete the file in ANY of bellow conditions:
+	// if the CacheEntry is marked as removed (e.isMarkedAsRemoved is true)
+	// OR
+	// if the related directory is in use (e.directoryInUseCount > 0)
+	if e.fileInUseCount == 0 && (e.isMarkedAsRemoved || e.directoryInUseCount > 0) {
 		err := os.RemoveAll(e.FilePath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Unable to delete cached file", err)
@@ -237,8 +250,6 @@ func (c *FileCache) Add(logger lager.Logger, cacheKey, sourcePath string, size i
 	logger.Info("starting")
 	defer logger.Info("finished")
 
-	oldEntry := c.Entries[cacheKey]
-
 	c.makeRoom(logger, size, "")
 
 	c.Seq++
@@ -250,12 +261,11 @@ func (c *FileCache) Add(logger lager.Logger, cacheKey, sourcePath string, size i
 		return nil, err
 	}
 
+	// before adding the new entry, mark the old one as removed
+	c.remove(logger, cacheKey)
+
 	newEntry := newFileCacheEntry(cachePath, size, cachingInfo)
 	c.Entries[cacheKey] = newEntry
-	if oldEntry != nil {
-		oldEntry.decrementUse()
-		c.updateOldEntries(logger, cacheKey, oldEntry)
-	}
 	return newEntry.readCloser()
 }
 
@@ -266,8 +276,6 @@ func (c *FileCache) AddDirectory(logger lager.Logger, cacheKey, sourcePath strin
 
 	logger.Info("starting")
 	defer logger.Info("finished")
-
-	oldEntry := c.Entries[cacheKey]
 
 	c.makeRoom(logger, size, "")
 
@@ -280,12 +288,11 @@ func (c *FileCache) AddDirectory(logger lager.Logger, cacheKey, sourcePath strin
 		return "", err
 	}
 
+	// before adding the new entry, mark the old one as removed
+	c.remove(logger, cacheKey)
+
 	newEntry := newFileCacheEntry(cachePath, size, cachingInfo)
 	c.Entries[cacheKey] = newEntry
-	if oldEntry != nil {
-		oldEntry.decrementUse()
-		c.updateOldEntries(logger, cacheKey, oldEntry)
-	}
 	return newEntry.expandedDirectory()
 }
 
@@ -357,7 +364,11 @@ func (c *FileCache) Remove(logger lager.Logger, cacheKey string) {
 func (c *FileCache) remove(logger lager.Logger, cacheKey string) {
 	entry := c.Entries[cacheKey]
 	if entry != nil {
-		entry.decrementUse()
+		// mark the entry as removed
+		entry.isMarkedAsRemoved = true
+		// validate the entry to decide if to remove the file or directory
+		entry.validateCacheEntry()
+		// store the entry in OldEntries if necessary
 		c.updateOldEntries(logger, cacheKey, entry)
 		delete(c.Entries, cacheKey)
 	}
@@ -365,11 +376,16 @@ func (c *FileCache) remove(logger lager.Logger, cacheKey string) {
 
 func (c *FileCache) updateOldEntries(logger lager.Logger, cacheKey string, entry *FileCacheEntry) {
 	if entry != nil {
-		if !entry.inUse() && entry.ExpandedDirectoryPath != "" {
-			// put it in the oldEntries Cache since somebody may still be using the directory
+		logger = logger.Session("update-old-entries", lager.Data{"cache_key": cacheKey, "dir_path": entry.ExpandedDirectoryPath, "in_use_file": entry.fileInUseCount, "in_use_dir": entry.directoryInUseCount, "is_marked_as_removed": entry.isMarkedAsRemoved})
+		logger.Info(fmt.Sprintf("old_entries_cnt=%d", len(c.OldEntries)))
+
+		if entry.inUse() && entry.ExpandedDirectoryPath != "" {
+			// for directory entry which is still used by someone,
+			// adding it to OldEntries waiting for close action to finally remove the directory
 			c.OldEntries[cacheKey+entry.ExpandedDirectoryPath] = entry
-		} else {
+		} else if entry.ExpandedDirectoryPath != "" {
 			// We need to remove it from oldEntries
+			// Maybe will never run into this branch
 			delete(c.OldEntries, cacheKey+entry.ExpandedDirectoryPath)
 		}
 	}
