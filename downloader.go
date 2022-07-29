@@ -122,6 +122,7 @@ func (downloader *Downloader) Download(
 	select {
 	case downloader.concurrentDownloadBarrier <- struct{}{}:
 	case <-cancelChan:
+		logger.Debug("cancelation-occured", lager.Data{"url": url.String(), "destination": createDestination})
 		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Now().Sub(startTime), NoBytesReceived, nil)
 	}
 	logger.Info("download-barrier", lager.Data{"duration-ns": time.Now().Sub(startTime)})
@@ -131,6 +132,7 @@ func (downloader *Downloader) Download(
 	}()
 
 	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
+		logger.Debug("attempting-download", lager.Data{"url": url.String(), "destination": createDestination, "attempt": attempt})
 		path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
 
 		if err == nil {
@@ -138,10 +140,12 @@ func (downloader *Downloader) Download(
 		}
 
 		if _, ok := err.(*DownloadCancelledError); ok {
+			logger.Debug("download-canceled", lager.Data{"url": url.String(), "destination": createDestination, "attempt": attempt})
 			break
 		}
 
 		if _, ok := err.(*ChecksumFailedError); ok {
+			logger.Debug("checksum-failed", lager.Data{"url": url.String(), "destination": createDestination, "attempt": attempt})
 			break
 		}
 	}
@@ -161,9 +165,12 @@ func (downloader *Downloader) fetchToFile(
 	checksum ChecksumInfoType,
 	cancelChan <-chan struct{},
 ) (string, CachingInfoType, error) {
+	logger = logger.Session("fetch-to-file")
+
 	var req *http.Request
 	var err error
 
+	logger.Debug("new-request", lager.Data{"url": url.String()})
 	req, err = http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		return "", CachingInfoType{}, err
@@ -199,6 +206,7 @@ func (downloader *Downloader) fetchToFile(
 	if err != nil {
 		select {
 		case <-cancelChan:
+			logger.Debug("fetch-request-canceled")
 			err = NewDownloadCancelledError("fetch-request", time.Now().Sub(startTime), NoBytesReceived, err)
 		default:
 		}
@@ -207,16 +215,20 @@ func (downloader *Downloader) fetchToFile(
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotModified {
+		logger.Debug("status-not-modified")
 		return "", CachingInfoType{}, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		logger.Debug("status-not-okay")
 		return "", CachingInfoType{}, fmt.Errorf("Download failed: Status code %d", resp.StatusCode)
 	}
 
 	var destinationFile *os.File
+	logger.Debug("creating-desintation-file")
 	destinationFile, err = createDestination()
 	if err != nil {
+		logger.Debug("creating-desintation-file-errored")
 		return "", CachingInfoType{}, err
 	}
 
@@ -249,11 +261,13 @@ func copyToDestinationFile(
 		}
 	}()
 
+	logger.Debug("rewinding-file")
 	_, err = destinationFile.Seek(0, 0)
 	if err != nil {
 		return "", CachingInfoType{}, err
 	}
 
+	logger.Debug("truncating-file")
 	err = destinationFile.Truncate(0)
 	if err != nil {
 		return "", CachingInfoType{}, err
@@ -263,6 +277,7 @@ func copyToDestinationFile(
 
 	// if checksum data is provided, create the checksum validator
 	if checksum.Algorithm != "" || checksum.Value != "" {
+		logger.Debug("create-checksum-validator")
 		checksumValidator, err = NewHashValidator(checksum.Algorithm)
 		if err != nil {
 			return "", CachingInfoType{}, err
@@ -271,6 +286,7 @@ func copyToDestinationFile(
 	}
 
 	startTime := time.Now()
+	logger.Debug("copying-response-to-file(s)")
 	written, err := io.Copy(io.MultiWriter(ioWriters...), resp.Body)
 
 	if err != nil {
@@ -291,8 +307,10 @@ func copyToDestinationFile(
 
 	// validate checksum
 	if checksumValidator != nil {
+		logger.Debug("validating-checksum")
 		err = checksumValidator.Validate(checksum.Value)
 		if err != nil {
+			logger.Debug("checksum-validation-failed")
 			return "", CachingInfoType{}, err
 		}
 	}
