@@ -121,8 +121,11 @@ func createTempCachedDir(path string) string {
 }
 
 func (c *cachedDownloader) SaveState(logger lager.Logger) error {
+	logger = logger.Session("save-state")
+	logger.Debug("marshalling-cache")
 	json, err := json.Marshal(c.cache)
 	if err != nil {
+		logger.Debug("unable-to-marshall-cache")
 		return err
 	}
 
@@ -130,8 +133,14 @@ func (c *cachedDownloader) SaveState(logger lager.Logger) error {
 }
 
 func (c *cachedDownloader) RecoverState(logger lager.Logger) error {
+	logger = logger.Session("recover-state")
+	logger.Debug("recover-state-started")
+	defer logger.Debug("recover-state-ended")
+
+	logger.Debug("opening-cache-location", lager.Data{"cache-location": c.cacheLocation})
 	file, err := os.Open(c.cacheLocation)
 	if err != nil && !os.IsNotExist(err) {
+		logger.Debug("failed-to-open-cache-location", lager.Data{"cache-location": c.cacheLocation})
 		return err
 	}
 
@@ -139,11 +148,13 @@ func (c *cachedDownloader) RecoverState(logger lager.Logger) error {
 
 	if err == nil {
 		// parse the file only if it exists
+		logger.Debug("decoding-file")
 		err = json.NewDecoder(file).Decode(c.cache)
 		file.Close()
 	}
 
 	// set the inuse count to 0 since all containers will be recreated
+	logger.Debug("reset-in-use-counts")
 	for _, entry := range c.cache.Entries {
 		// inuseCount starts at 1 (i.e. 1 == no references to the entry)
 		entry.directoryInUseCount = 0
@@ -159,27 +170,35 @@ func (c *cachedDownloader) RecoverState(logger lager.Logger) error {
 		trackedFiles[entry.ExpandedDirectoryPath] = struct{}{}
 	}
 
+	logger.Debug("read-cached-path-dir")
 	files, err := ioutil.ReadDir(c.cache.CachedPath)
 	if err != nil && !os.IsNotExist(err) {
+		logger.Debug("failed-to-read-cached-path-dir")
 		return err
 	}
 
+	logger.Debug("removing-files")
 	for _, file := range files {
 		path := filepath.Join(c.cache.CachedPath, file.Name())
 		if _, ok := trackedFiles[path]; ok {
+			logger.Debug("ignoring-tracked-file", lager.Data{"path": path})
 			continue
 		}
-
+		logger.Debug("removing-file", lager.Data{"path": path})
 		err = os.RemoveAll(path)
 		if err != nil {
+			logger.Debug("error-removing-file", lager.Data{"path": path})
 			return err
 		}
 	}
 
 	// free some disk space in case the maxSizeInBytes was changed
+	logger.Debug("making-room")
 	c.cache.makeRoom(logger, 0, "")
 
+	logger.Debug("making-directory", lager.Data{"uncachedPath": c.uncachedPath})
 	if err := os.Mkdir(c.uncachedPath, 0755); err != nil {
+		logger.Debug("failed-to-make-directory", lager.Data{"uncachedPath": c.uncachedPath})
 		return err
 	}
 
@@ -187,49 +206,77 @@ func (c *cachedDownloader) RecoverState(logger lager.Logger) error {
 }
 
 func (c *cachedDownloader) CloseDirectory(logger lager.Logger, cacheKey, directoryPath string) error {
+	logger = logger.Session("close-directory", lager.Data{"cache-key": cacheKey, "directory-path": directoryPath})
+	logger.Debug("close-directory-started")
+	defer logger.Debug("close-directory-ended")
+
 	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
 	return c.cache.CloseDirectory(logger, cacheKey, directoryPath)
 }
 
 func (c *cachedDownloader) Fetch(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (io.ReadCloser, int64, error) {
+	logger = logger.Session("fetch", lager.Data{"url": url, "cache-key": cacheKey})
+	logger.Debug("fetch-started")
+	defer logger.Debug("fetch-ended")
+
 	if cacheKey == "" {
+		logger.Debug("uncached-fetch")
 		return c.fetchUncachedFile(logger, url, checksum, cancelChan)
 	}
 
 	cacheKey = fmt.Sprintf("%x", md5.Sum([]byte(cacheKey)))
+	logger.Debug("cached-fetch")
 	return c.fetchCachedFile(logger, url, cacheKey, checksum, cancelChan)
 }
 
 func (c *cachedDownloader) fetchUncachedFile(logger lager.Logger, url *url.URL, checksum ChecksumInfoType, cancelChan <-chan struct{}) (*CachedFile, int64, error) {
+	logger = logger.Session("fetch-uncached-file", lager.Data{"url": url})
+	logger.Debug("fetch-uncached-file-started")
+	defer logger.Debug("fetch-uncached-file-ended")
+
+	logger.Debug("populating-cache")
 	download, _, size, err := c.populateCache(logger, url, "uncached", CachingInfoType{}, checksum, c.transformer, cancelChan)
 	if err != nil {
+		logger.Debug("error-populating-cache", lager.Data{"error": err})
 		return nil, 0, err
 	}
 
+	logger.Debug("generating-file-closer")
 	file, err := tempFileRemoveOnClose(download.path)
 	return file, size, err
 }
 
 func (c *cachedDownloader) fetchCachedFile(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (*CachedFile, int64, error) {
+	logger = logger.Session("fetch-cached-file", lager.Data{"url": url, "cache-key": cacheKey})
+	logger.Debug("fetch-cached-file-started")
+	defer logger.Debug("fetch-cached-file-ended")
+
+	logger.Debug("generating-rate-limiter")
 	rateLimiter, err := c.acquireLimiter(logger, cacheKey, cancelChan)
 	if err != nil {
+		logger.Debug("error-generating-rate-limiter", lager.Data{"error": err})
 		return nil, 0, err
 	}
 	defer c.releaseLimiter(cacheKey, rateLimiter)
 
 	// lookup cache entry
+	logger.Debug("getting-cachekey", lager.Data{"cache-key": cacheKey})
 	currentReader, currentCachingInfo, getErr := c.cache.Get(logger, cacheKey)
 
 	// download (short circuits if endpoint respects etag/etc.)
+	logger.Debug("populating-cache")
 	download, cacheIsWarm, size, err := c.populateCache(logger, url, cacheKey, currentCachingInfo, checksum, c.transformer, cancelChan)
 	if err != nil {
+		logger.Debug("error-populating-cache", lager.Data{"error": err})
 		if currentReader != nil {
+			logger.Debug("closing-current-reader")
 			currentReader.Close()
 		}
 		return nil, 0, err
 	}
 
 	// nothing had to be downloaded; return the cached entry
+	logger.Debug("check-if-cache-is-warm", lager.Data{"cache-is-warm": cacheIsWarm})
 	if cacheIsWarm {
 		logger.Info("file-found-in-cache", lager.Data{"cache_key": cacheKey, "size": size})
 		return currentReader, 0, getErr
@@ -237,14 +284,18 @@ func (c *cachedDownloader) fetchCachedFile(logger lager.Logger, url *url.URL, ca
 
 	// current cache is not fresh; disregard it
 	if currentReader != nil {
+		logger.Debug("closing-current-reader")
 		currentReader.Close()
 	}
 
 	// fetch uncached data
 	var newReader *CachedFile
+	logger.Debug("check-file-cachablity", lager.Data{"cache-key": cacheKey, "path": download.path, "cacheable": download.cachingInfo.isCacheable()})
 	if download.cachingInfo.isCacheable() {
+		logger.Debug("cachable_add-cache-entry", lager.Data{"cache-key": cacheKey, "path": download.path})
 		newReader, err = c.cache.Add(logger, cacheKey, download.path, download.size, download.cachingInfo)
 	} else {
+		logger.Debug("uncacheable_remove-cache-key", lager.Data{"cache-key": cacheKey, "path": download.path})
 		c.cache.Remove(logger, cacheKey)
 		newReader, err = tempFileRemoveOnClose(download.path)
 	}
@@ -254,7 +305,13 @@ func (c *cachedDownloader) fetchCachedFile(logger lager.Logger, url *url.URL, ca
 }
 
 func (c *cachedDownloader) FetchAsDirectory(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (string, int64, error) {
+	logger = logger.Session("fetch-as-directory", lager.Data{"url": url, "cache-key": cacheKey})
+	logger.Debug("fetch-as-directory-started")
+	defer logger.Debug("fetch-as-directory-ended")
+
+	logger.Debug("check-missing-cache-key", lager.Data{"cache-key": cacheKey})
 	if cacheKey == "" {
+		logger.Debug("missing-cache-key")
 		return "", 0, MissingCacheKeyErr
 	}
 
@@ -263,8 +320,14 @@ func (c *cachedDownloader) FetchAsDirectory(logger lager.Logger, url *url.URL, c
 }
 
 func (c *cachedDownloader) fetchCachedDirectory(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (string, int64, error) {
+	logger = logger.Session("fetch-cached-directory", lager.Data{"url": url, "cache-key": cacheKey})
+	logger.Debug("fetch-cached-directory-started")
+	defer logger.Debug("fetch-cached-directory-ended")
+
+	logger.Debug("generating-rate-limiter")
 	rateLimiter, err := c.acquireLimiter(logger, cacheKey, cancelChan)
 	if err != nil {
+		logger.Debug("error-generating-rate-limiter", lager.Data{"error": err})
 		return "", 0, err
 	}
 	defer c.releaseLimiter(cacheKey, rateLimiter)
@@ -273,8 +336,10 @@ func (c *cachedDownloader) fetchCachedDirectory(logger lager.Logger, url *url.UR
 	currentDirectory, currentCachingInfo, getErr := c.cache.GetDirectory(logger, cacheKey)
 
 	// download (short circuits if endpoint respects etag/etc.)
+	logger.Debug("populate-cache-entry", lager.Data{"url": url, "cache-key": cacheKey})
 	download, cacheIsWarm, size, err := c.populateCache(logger, url, cacheKey, currentCachingInfo, checksum, TarTransform, cancelChan)
 	if err != nil {
+		logger.Debug("error-download-cache-entry", lager.Data{"url": url, "cache-key": cacheKey, "current-directory": currentDirectory})
 		if currentDirectory != "" {
 			c.cache.CloseDirectory(logger, cacheKey, currentDirectory)
 		}
@@ -283,31 +348,36 @@ func (c *cachedDownloader) fetchCachedDirectory(logger lager.Logger, url *url.UR
 
 	// nothing had to be downloaded; return the cached entry
 	if cacheIsWarm {
-		logger.Info("directory-found-in-cache", lager.Data{"cache_key": cacheKey, "size": size})
+		logger.Info("directory-found-in-cache", lager.Data{"cache-key": cacheKey, "size": size})
 		return currentDirectory, 0, getErr
 	}
 
 	// current cache is not fresh; disregard it
 	if currentDirectory != "" {
+		logger.Debug("closing-current-directory", lager.Data{"current-directory": currentDirectory})
 		c.cache.CloseDirectory(logger, cacheKey, currentDirectory)
 	}
 
 	// fetch uncached data
 	var newDirectory string
 	if download.cachingInfo.isCacheable() {
+		logger.Debug("adding-cachable-directory", lager.Data{"cache-key": cacheKey, "download-path": download.path})
 		newDirectory, err = c.cache.AddDirectory(logger, cacheKey, download.path, download.size, download.cachingInfo)
 		// return newly fetched directory
 		return newDirectory, size, err
 	}
 
+	logger.Debug("removing-cache-key", lager.Data{"cache-key": cacheKey})
 	c.cache.Remove(logger, cacheKey)
 	return "", 0, MissingCacheHeadersErr
 }
 
 func (c *cachedDownloader) acquireLimiter(logger lager.Logger, cacheKey string, cancelChan <-chan struct{}) (chan struct{}, error) {
+	logger = logger.Session("aquire-limiter", lager.Data{"cache-key": cacheKey})
+	logger.Debug("aquire-limiter-started")
+	defer logger.Debug("aquire-limiter-ended")
+
 	startTime := time.Now()
-	logger = logger.Session("acquire-rate-limiter", lager.Data{"cache-key": cacheKey})
-	logger.Info("starting")
 	defer func() {
 		logger.Info("completed", lager.Data{"duration-ns": time.Now().Sub(startTime)})
 	}()
@@ -318,6 +388,7 @@ func (c *cachedDownloader) acquireLimiter(logger lager.Logger, cacheKey string, 
 		if rateLimiter == nil {
 			rateLimiter = make(chan struct{})
 			c.inProgress[cacheKey] = rateLimiter
+			logger.Debug("rate-limiter-locked")
 			c.lock.Unlock()
 			return rateLimiter, nil
 		}
@@ -325,7 +396,9 @@ func (c *cachedDownloader) acquireLimiter(logger lager.Logger, cacheKey string, 
 
 		select {
 		case <-rateLimiter:
+			logger.Debug("rate-limiter-unlocked")
 		case <-cancelChan:
+			logger.Debug("cancellation-received")
 			return nil, NewDownloadCancelledError("acquire-limiter", time.Now().Sub(startTime), NoBytesReceived, nil)
 		}
 	}
@@ -367,6 +440,10 @@ func (c *cachedDownloader) populateCache(
 	transformer CacheTransformer,
 	cancelChan <-chan struct{},
 ) (download, bool, int64, error) {
+	logger = logger.Session("populate-cache", lager.Data{"url": url, "name": name})
+	logger.Debug("populdate-cache-started")
+	defer logger.Debug("populdate-cache-ended")
+
 	filename, cachingInfo, err := c.downloader.Download(logger, url, func() (*os.File, error) {
 		return ioutil.TempFile(c.uncachedPath, name+"-")
 	}, cachingInfo, checksum, cancelChan)
@@ -384,6 +461,7 @@ func (c *cachedDownloader) populateCache(
 	}
 	defer os.Remove(filename)
 
+	logger.Debug("create-temp-file", lager.Data{"uncached-path": c.uncachedPath})
 	cachedFile, err := ioutil.TempFile(c.uncachedPath, "transformed")
 	if err != nil {
 		return download{}, false, 0, err
@@ -394,6 +472,7 @@ func (c *cachedDownloader) populateCache(
 		return download{}, false, 0, err
 	}
 
+	logger.Debug("tranform-cached-file", lager.Data{"source": filename, "desintation": cachedFile.Name()})
 	cachedSize, err := transformer(filename, cachedFile.Name())
 	if err != nil {
 		return download{}, false, 0, err
