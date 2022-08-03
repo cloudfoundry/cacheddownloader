@@ -215,7 +215,7 @@ func (c *cachedDownloader) CloseDirectory(logger lager.Logger, cacheKey, directo
 }
 
 func (c *cachedDownloader) Fetch(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (io.ReadCloser, int64, error) {
-	logger = logger.Session("fetch", lager.Data{"url": url, "cache-key": cacheKey})
+	logger = logger.Session("fetch", lager.Data{"url": url, "cache-key-string": cacheKey})
 	logger.Debug("fetch-started")
 	defer logger.Debug("fetch-ended")
 
@@ -319,7 +319,7 @@ func (c *cachedDownloader) FetchAsDirectory(logger lager.Logger, url *url.URL, c
 	return c.fetchCachedDirectory(logger, url, cacheKey, checksum, cancelChan)
 }
 
-func (c *cachedDownloader) fetchCachedDirectory(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (string, int64, error) {
+func (c *cachedDownloader) fetchCachedDirectory(logger lager.Logger, url *url.URL, cacheKey string, checksum ChecksumInfoType, cancelChan <-chan struct{}) (directoryPath string, size int64, err error) {
 	logger = logger.Session("fetch-cached-directory", lager.Data{"url": url, "cache-key": cacheKey})
 	logger.Debug("fetch-cached-directory-started")
 	defer logger.Debug("fetch-cached-directory-ended")
@@ -441,8 +441,8 @@ func (c *cachedDownloader) populateCache(
 	cancelChan <-chan struct{},
 ) (download, bool, int64, error) {
 	logger = logger.Session("populate-cache", lager.Data{"url": url, "name": name})
-	logger.Debug("populdate-cache-started")
-	defer logger.Debug("populdate-cache-ended")
+	logger.Debug("populate-cache-started")
+	defer logger.Debug("populate-cache-ended")
 
 	filename, cachingInfo, err := c.downloader.Download(logger, url, func() (*os.File, error) {
 		return ioutil.TempFile(c.uncachedPath, name+"-")
@@ -472,7 +472,7 @@ func (c *cachedDownloader) populateCache(
 		return download{}, false, 0, err
 	}
 
-	logger.Debug("tranform-cached-file", lager.Data{"source": filename, "desintation": cachedFile.Name()})
+	logger.Debug("transform-cached-file", lager.Data{"transform_source": filename, "transform_desintation": cachedFile.Name()})
 	cachedSize, err := transformer(filename, cachedFile.Name())
 	if err != nil {
 		return download{}, false, 0, err

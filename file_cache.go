@@ -228,7 +228,7 @@ func (e *FileCacheEntry) expandedDirectory(logger lager.Logger) (string, error) 
 }
 
 func (c *FileCache) CloseDirectory(logger lager.Logger, cacheKey, dirPath string) error {
-	logger = logger.Session("file-cache.close-directory", lager.Data{"cache_key": cacheKey, "dir_path": dirPath})
+	logger = logger.Session("file-cache.close-directory", lager.Data{"cache-key": cacheKey, "dir_path": dirPath})
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -237,7 +237,8 @@ func (c *FileCache) CloseDirectory(logger lager.Logger, cacheKey, dirPath string
 
 	entry := c.Entries[cacheKey]
 	if entry != nil && entry.ExpandedDirectoryPath == dirPath {
-		logger.Debug("no-entry-detected")
+		logger.Debug("entry-detected")
+		logger.Debug("does-old-entries-contain-this", lager.Data{"possible-old-entry": c.OldEntries[cacheKey+dirPath]})
 		if entry.directoryInUseCount == 0 {
 			// We don't think anybody is using this so throw an error
 			return AlreadyClosed
@@ -249,7 +250,7 @@ func (c *FileCache) CloseDirectory(logger lager.Logger, cacheKey, dirPath string
 
 	// Key didn't match anything in the current cache, so
 	// check and clean up old entries
-	logger.Debug("add-old-entries", lager.Data{"cache_key": cacheKey, "dir_path": dirPath})
+	logger.Debug("add-old-entries", lager.Data{"cache-key": cacheKey, "dir_path": dirPath})
 	entry = c.OldEntries[cacheKey+dirPath]
 	if entry == nil {
 		return EntryNotFound
@@ -265,7 +266,7 @@ func (c *FileCache) CloseDirectory(logger lager.Logger, cacheKey, dirPath string
 }
 
 func (c *FileCache) Add(logger lager.Logger, cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (*CachedFile, error) {
-	logger = logger.Session("file-cache.add", lager.Data{"cache_key": cacheKey, "source_path": sourcePath, "size": size})
+	logger = logger.Session("file-cache.add", lager.Data{"cache-key": cacheKey, "source_path": sourcePath, "size": size})
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -293,7 +294,7 @@ func (c *FileCache) Add(logger lager.Logger, cacheKey, sourcePath string, size i
 
 	logger.Debug("clean-old-entries-if-present")
 	if oldEntry != nil {
-		logger.Debug("removing-old-entry", lager.Data{"oldEntry": oldEntry})
+		logger.Debug("removing-old-entries", lager.Data{"oldEntry": oldEntry})
 		oldEntry.decrementUse(logger)
 		c.updateOldEntries(logger, cacheKey, oldEntry)
 	}
@@ -301,7 +302,7 @@ func (c *FileCache) Add(logger lager.Logger, cacheKey, sourcePath string, size i
 }
 
 func (c *FileCache) AddDirectory(logger lager.Logger, cacheKey, sourcePath string, size int64, cachingInfo CachingInfoType) (string, error) {
-	logger = logger.Session("file-cache.add-directory", lager.Data{"cache_key": cacheKey, "source_path": sourcePath, "size": size})
+	logger = logger.Session("file-cache.add-directory", lager.Data{"cache-key": cacheKey, "source_path": sourcePath, "size": size})
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -329,7 +330,7 @@ func (c *FileCache) AddDirectory(logger lager.Logger, cacheKey, sourcePath strin
 
 	logger.Debug("clean-old-entries-if-present")
 	if oldEntry != nil {
-		logger.Debug("removing-old-entry", lager.Data{"oldEntry": oldEntry})
+		logger.Debug("removing-old-entries", lager.Data{"oldEntry": oldEntry})
 		oldEntry.decrementUse(logger)
 		c.updateOldEntries(logger, cacheKey, oldEntry)
 	}
@@ -337,7 +338,7 @@ func (c *FileCache) AddDirectory(logger lager.Logger, cacheKey, sourcePath strin
 }
 
 func (c *FileCache) Get(logger lager.Logger, cacheKey string) (*CachedFile, CachingInfoType, error) {
-	logger = logger.Session("file-cache.get", lager.Data{"cache_key": cacheKey})
+	logger = logger.Session("file-cache.get", lager.Data{"cache-key": cacheKey})
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -369,7 +370,7 @@ func (c *FileCache) Get(logger lager.Logger, cacheKey string) (*CachedFile, Cach
 }
 
 func (c *FileCache) GetDirectory(logger lager.Logger, cacheKey string) (string, CachingInfoType, error) {
-	logger = logger.Session("file-cache.get-directory", lager.Data{"cache_key": cacheKey})
+	logger = logger.Session("file-cache.get-directory", lager.Data{"cache-key": cacheKey})
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -400,7 +401,7 @@ func (c *FileCache) GetDirectory(logger lager.Logger, cacheKey string) (string, 
 }
 
 func (c *FileCache) Remove(logger lager.Logger, cacheKey string) {
-	logger = logger.Session("file-cache.remove", lager.Data{"cache_key": cacheKey})
+	logger = logger.Session("file-cache.remove", lager.Data{"cache-key": cacheKey})
 
 	lock.Lock()
 	logger.Info("starting")
@@ -410,7 +411,7 @@ func (c *FileCache) Remove(logger lager.Logger, cacheKey string) {
 }
 
 func (c *FileCache) remove(logger lager.Logger, cacheKey string) {
-	logger = logger.Session("file-cache.inner-remove", lager.Data{"cache_key": cacheKey})
+	logger = logger.Session("file-cache.inner-remove", lager.Data{"cache-key": cacheKey})
 	entry := c.Entries[cacheKey]
 	if entry != nil {
 		logger.Debug("entry-is-present", lager.Data{"entry": entry})

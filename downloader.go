@@ -132,7 +132,7 @@ func (downloader *Downloader) Download(
 	}()
 
 	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
-		logger.Debug("attempting-download", lager.Data{"url": url.String(), "destination": createDestination, "attempt": attempt})
+		logger.Debug("attempting-download", lager.Data{"url": url.String(), "attempt": attempt})
 		path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
 
 		if err == nil {
@@ -140,17 +140,18 @@ func (downloader *Downloader) Download(
 		}
 
 		if _, ok := err.(*DownloadCancelledError); ok {
-			logger.Debug("download-canceled", lager.Data{"url": url.String(), "destination": createDestination, "attempt": attempt})
+			logger.Debug("download-canceled", lager.Data{"url": url.String(), "attempt": attempt})
 			break
 		}
 
 		if _, ok := err.(*ChecksumFailedError); ok {
-			logger.Debug("checksum-failed", lager.Data{"url": url.String(), "destination": createDestination, "attempt": attempt})
+			logger.Debug("checksum-failed", lager.Data{"url": url.String(), "attempt": attempt})
 			break
 		}
 	}
 
 	if err != nil {
+		logger.Debug("unhandled-download-error", lager.Data{"error": err, "url": url.String(), "destination": createDestination})
 		return "", CachingInfoType{}, err
 	}
 
