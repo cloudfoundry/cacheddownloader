@@ -2,6 +2,7 @@ package cacheddownloader_test
 
 import (
 	"archive/tar"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -20,6 +21,7 @@ var _ = Describe("FileCache", func() {
 		cacheDir                  string
 		err                       error
 		sourceFile, sourceArchive *os.File
+		fileContents              string
 		maxSizeInBytes            int64
 		logger                    *lagertest.TestLogger
 	)
@@ -29,7 +31,8 @@ var _ = Describe("FileCache", func() {
 		cacheDir, err = ioutil.TempDir("", "cache-test")
 		Expect(err).NotTo(HaveOccurred())
 
-		sourceFile = createFile("cache-test-file", "the-file-content")
+		fileContents = "the-file-content"
+		sourceFile = createFile("cache-test-file", fileContents)
 		sourceArchive = createArchive("cache-test-archive", "Data in Test File")
 
 		maxSizeInBytes = 123424
@@ -41,6 +44,94 @@ var _ = Describe("FileCache", func() {
 		os.RemoveAll(sourceFile.Name())
 		os.RemoveAll(sourceArchive.Name())
 		os.RemoveAll(cacheDir)
+	})
+
+	FDescribe("Add_v2", func() {
+
+		It("adds the file to the list of entries", func() {
+			inputCacheInfo := cacheddownloader.CachingInfoType{ETag: "e-tag", LastModified: ""}
+
+			// Search prior to adding
+			cachedFile, cachingInfo, err := cache.Get(logger, "add-cache-key")
+			Expect(cachedFile).To(BeNil())
+			Expect(cachingInfo).To(Equal(cacheddownloader.CachingInfoType{}))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("Entry Not Found"))
+
+			// Add the file to the catche
+			returnedCachedFile, err := cache.Add(logger, "add-cache-key", sourceFile.Name(), 100, inputCacheInfo)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Fetch from the cache using the cache-key
+			cachedFile, cachingInfo, err = cache.Get(logger, "add-cache-key")
+			Expect(cachedFile.Name()).To(Equal(returnedCachedFile.Name()))
+			Expect(cachingInfo).To(Equal(inputCacheInfo))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("stores the file in its Entries list", func() {
+			inputCacheInfo := cacheddownloader.CachingInfoType{ETag: "e-tag", LastModified: ""}
+			_, err := cache.Add(logger, "add-cache-key", sourceFile.Name(), 100, inputCacheInfo)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(len(cache.Entries)).To(Equal(1))
+			Expect(len(cache.OldEntries)).To(Equal(0))
+
+			Expect(cache.Entries["add-cache-key"]).NotTo(BeNil())
+			cacheEntry := cache.Entries["add-cache-key"]
+			Expect(cacheEntry.FilePath).To(ContainSubstring(cacheDir))
+			Expect(cacheEntry.CachingInfo).To(Equal(inputCacheInfo))
+		})
+
+		It("provides a unique name", func() {
+			inputCacheInfo := cacheddownloader.CachingInfoType{ETag: "e-tag", LastModified: ""}
+			firstCachedFile, err := cache.Add(logger, "add-cache-key", sourceFile.Name(), 100, inputCacheInfo)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cache.Seq).To(BeNumerically("==", 1))
+
+			// Re-instantiate uncached file so we can cache it again
+			sourceFile = createFile("cache-test-file", "the-file-content")
+			secondCachedFile, err := cache.Add(logger, "add-cache-key", sourceFile.Name(), 100, inputCacheInfo)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cache.Seq).To(BeNumerically("==", 2))
+
+			Expect(firstCachedFile.Name()).To(ContainSubstring(fmt.Sprintf("%s/%s", cacheDir, "add-cache-key")))
+			Expect(firstCachedFile.Name()).To(MatchRegexp("-1$"))
+			Expect(secondCachedFile.Name()).To(ContainSubstring(fmt.Sprintf("%s/%s", cacheDir, "add-cache-key")))
+			Expect(secondCachedFile.Name()).To(MatchRegexp("-2$"))
+		})
+
+		It("returns a readCloser that contains the file contents", func() {
+			inputCacheInfo := cacheddownloader.CachingInfoType{ETag: "e-tag", LastModified: ""}
+			cachedFile, err := cache.Add(logger, "add-cache-key", sourceFile.Name(), 100, inputCacheInfo)
+			Expect(err).NotTo(HaveOccurred())
+
+			cachedContent, err := ioutil.ReadAll(cachedFile)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(cachedContent)).To(Equal(fileContents))
+		})
+
+		It("saves the file to the cache directory", func() {
+			var cacheInfo cacheddownloader.CachingInfoType
+			cachedFile, err := cache.Add(logger, "add-cache-key", sourceFile.Name(), 100, cacheInfo)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+			Expect(filenamesInDir(cacheDir)).To(ContainElement(strings.TrimPrefix(cachedFile.Name(), cacheDir+"/")))
+
+		})
+
+		Describe("Making room for additional entries in the cache", func() {
+			It("does not make space when there is enough space", func() {
+				// Entries increase 
+				// OldEntries remains the same
+				// useSpace increases 
+				
+
+
+			})
+		})
+
+		PIt("fails when you try to cache the same file twice, because the file has been moved after the first call to Add", func() {})
 	})
 
 	Describe("Add", func() {
@@ -323,8 +414,12 @@ var _ = Describe("FileCache", func() {
 
 						It("has files in the cache", func() {
 							Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+							Expect(cache.Entries).To(HaveLen(1))
+							Expect(cache.OldEntries).To(HaveLen(1))
 							cache.CloseDirectory(logger, cacheKey, directoryPath)
 							Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+							Expect(cache.Entries).To(HaveLen(1))
+							Expect(cache.OldEntries).To(HaveLen(0))
 						})
 					})
 
@@ -343,8 +438,12 @@ var _ = Describe("FileCache", func() {
 
 						It("has files in the cache", func() {
 							Expect(filenamesInDir(cacheDir)).To(HaveLen(2))
+							Expect(cache.Entries).To(HaveLen(1))
+							Expect(cache.OldEntries).To(HaveLen(1))
 							cache.CloseDirectory(logger, cacheKey, directoryPath)
 							Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
+							Expect(cache.Entries).To(HaveLen(1))
+							Expect(cache.OldEntries).To(HaveLen(0))
 						})
 
 						It("still allows the previous directory to exist", func() {
@@ -650,6 +749,11 @@ var _ = Describe("FileCache", func() {
 					Expect(err).NotTo(HaveOccurred())
 					Expect(fileInfo.IsDir()).To(BeTrue())
 					cache.CloseDirectory(logger, cacheKey, dir)
+
+					filePath := dir + "/testdir/file.txt"
+					contents, err := ioutil.ReadFile(filePath)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal("new-file-content"))
 				})
 
 				Context("when a get is issued before a replace", func() {
@@ -965,6 +1069,7 @@ func createArchive(filename, sampleData string) *os.File {
 		{"testdir/file.txt", sampleData, tar.TypeReg, 0600},
 		{"testdir/fileLink.txt", "/diego.txt", tar.TypeSymlink, 0600},
 	}
+
 	for _, file := range files {
 		var hdr *tar.Header
 		if file.Type == tar.TypeSymlink {
