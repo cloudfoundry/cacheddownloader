@@ -18,6 +18,7 @@ import (
 	"code.cloudfoundry.org/lager/lagertest"
 	"code.cloudfoundry.org/systemcerts"
 	"code.cloudfoundry.org/tlsconfig"
+	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/ghttp"
 
 	. "github.com/onsi/ginkgo"
@@ -311,10 +312,13 @@ var _ = Describe("Downloader", func() {
 					case <-time.After(30 * time.Second):
 						return
 					}
-					w.Write(bytes.Repeat([]byte("a"), 1024))
+					for i := 0; i < 100000; i++ {
+						w.Write(bytes.Repeat([]byte("a"), 1024))
+					}
 					w.(http.Flusher).Flush()
 					select {
 					case <-completeRequest:
+						return
 					case <-time.After(30 * time.Second):
 						return
 					}
@@ -344,6 +348,12 @@ var _ = Describe("Downloader", func() {
 
 			It("stops the download", func() {
 				errs := make(chan error)
+				destFile, err := ioutil.TempFile("", "foo")
+				Expect(err).NotTo(HaveOccurred())
+
+				createDestFile := func() (*os.File, error) {
+					return destFile, nil
+				}
 
 				go func() {
 					_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
@@ -352,10 +362,18 @@ var _ = Describe("Downloader", func() {
 
 				Eventually(requestInitiated).Should(Receive())
 				completeRequest <- struct{}{}
+
+				// Make sure download started to local file
+				Eventually(func() int {
+					fi, err := os.Stat(destFile.Name())
+					Expect(err).NotTo(HaveOccurred())
+					return int(fi.Size())
+				}).Should(BeNumerically(">", 10))
 				close(cancelChan)
 
 				Eventually(errs).Should(Receive(BeAssignableToTypeOf(&cacheddownloader.DownloadCancelledError{})))
 				close(completeRequest)
+				Consistently(logger).ShouldNot(gbytes.Say(`bytes-written":102400000`))
 			})
 		})
 
