@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/lager"
+	"github.com/hashicorp/go-retryablehttp"
 )
 
 const (
@@ -68,7 +69,7 @@ func (c *idleTimeoutConn) Write(b []byte) (n int, err error) {
 }
 
 type Downloader struct {
-	client                    *http.Client
+	client                    *retryablehttp.Client
 	concurrentDownloadBarrier chan struct{}
 }
 
@@ -95,13 +96,13 @@ func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time
 		DisableKeepAlives:   true,
 	}
 
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   requestTimeout,
-	}
+	retryClient := retryablehttp.NewClient()
+	retryClient.HTTPClient.Transport = transport
+	retryClient.HTTPClient.Timeout = requestTimeout
+	retryClient.RetryMax = MAX_DOWNLOAD_ATTEMPTS
 
 	return &Downloader{
-		client:                    client,
+		client:                    retryClient,
 		concurrentDownloadBarrier: make(chan struct{}, maxConcurrentDownloads),
 	}
 }
@@ -118,34 +119,20 @@ func (downloader *Downloader) Download(
 	startTime := time.Now()
 	logger = logger.Session("download", lager.Data{"host": url.Host})
 	logger.Info("starting")
-	defer logger.Info("completed", lager.Data{"duration-ns": time.Now().Sub(startTime)})
+	defer logger.Info("completed", lager.Data{"duration-ns": time.Since(startTime)})
 
 	select {
 	case downloader.concurrentDownloadBarrier <- struct{}{}:
 	case <-cancelChan:
-		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Now().Sub(startTime), NoBytesReceived, nil)
+		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Since(startTime), NoBytesReceived, nil)
 	}
-	logger.Info("download-barrier", lager.Data{"duration-ns": time.Now().Sub(startTime)})
+	logger.Info("download-barrier", lager.Data{"duration-ns": time.Since(startTime)})
 
 	defer func() {
 		<-downloader.concurrentDownloadBarrier
 	}()
 
-	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
-		path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
-
-		if err == nil {
-			break
-		}
-
-		if _, ok := err.(*DownloadCancelledError); ok {
-			break
-		}
-
-		if _, ok := err.(*ChecksumFailedError); ok {
-			break
-		}
-	}
+	path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
 
 	if err != nil {
 		return "", CachingInfoType{}, err
@@ -162,10 +149,11 @@ func (downloader *Downloader) fetchToFile(
 	checksum ChecksumInfoType,
 	cancelChan <-chan struct{},
 ) (string, CachingInfoType, error) {
-	var req *http.Request
+	var req *retryablehttp.Request
 	var err error
 
-	req, err = http.NewRequest("GET", url.String(), nil)
+	req, err = retryablehttp.NewRequest("GET", url.String(), nil)
+
 	if err != nil {
 		return "", CachingInfoType{}, err
 	}
