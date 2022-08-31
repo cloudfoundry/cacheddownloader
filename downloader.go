@@ -20,6 +20,13 @@ const (
 	NoBytesReceived       = -1
 )
 
+// RetryableConfig .
+// type RetryableConfig struct {
+// 	RetryMax     int
+// 	RetryWaitMin time.Duration
+// 	RetryWaitMax time.Duration
+// }
+
 type DownloadCancelledError struct {
 	source   string
 	duration time.Duration
@@ -73,11 +80,24 @@ type Downloader struct {
 	concurrentDownloadBarrier chan struct{}
 }
 
-func NewDownloader(requestTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
-	return NewDownloaderWithIdleTimeout(requestTimeout, 10*time.Second, maxConcurrentDownloads, tlsConfig)
+type HttpRequester interface {
+	NewRequest(method string, url string, rawBody interface{}) (*retryablehttp.Request, error)
 }
 
-func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
+func NewDownloader(requester HttpRequester, requestTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
+
+	return NewDownloaderWithIdleTimeout(requester, requestTimeout, 10*time.Second, maxConcurrentDownloads, tlsConfig)
+}
+
+// func NewRetryableClient()(*http.Client){
+// 	retryClient := retryablehttp.NewClient()
+// 	retryClient.HTTPClient.Transport = transport
+// 	retryClient.HTTPClient.Timeout = requestTimeout
+// 	retryClient.RetryMax = MAX_DOWNLOAD_ATTEMPTS
+// 	retryClient.Backoff = retryablehttp.DefaultBackoff
+// }
+
+func NewDownloaderWithIdleTimeout(requester HttpRequester, requestTimeout time.Duration, idleTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: func(netw, addr string) (net.Conn, error) {
@@ -100,6 +120,7 @@ func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time
 	retryClient.HTTPClient.Transport = transport
 	retryClient.HTTPClient.Timeout = requestTimeout
 	retryClient.RetryMax = MAX_DOWNLOAD_ATTEMPTS
+	retryClient.Backoff = retryablehttp.DefaultBackoff
 
 	return &Downloader{
 		client:                    retryClient,
@@ -133,7 +154,7 @@ func (downloader *Downloader) Download(
 	}()
 
 	path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
-
+	//TODO handel DownloadCancelError && ChecksumFailedError
 	if err != nil {
 		return "", CachingInfoType{}, err
 	}

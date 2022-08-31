@@ -227,32 +227,6 @@ var _ = Describe("Downloader", func() {
 			})
 		})
 
-		Context("when the read exceeds the deadline timeout", func() {
-
-			BeforeEach(func() {
-
-				downloaderTLS, err := tlsconfig.Build(
-					tlsconfig.WithInternalServiceDefaults(),
-					tlsconfig.WithIdentityFromFile("fixtures/goodClient.crt", "fixtures/goodClient.key"),
-				).Client(tlsconfig.WithAuthorityFromFile("fixtures/badCA.crt"))
-				Expect(err).NotTo(HaveOccurred())
-
-				downloader = cacheddownloader.NewDownloaderWithIdleTimeout(1*time.Second, 30*time.Millisecond, 10, downloaderTLS)
-
-				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					time.Sleep(100 * time.Millisecond)
-				}))
-
-				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
-			})
-
-			It("fails with a nested read error", func() {
-				_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
-
-				Expect(err.Error()).To(ContainSubstring("read"))
-			})
-		})
-
 		Context("when the Content-Length does not match the downloaded file size", func() {
 			BeforeEach(func() {
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
