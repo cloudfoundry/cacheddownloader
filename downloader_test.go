@@ -17,6 +17,7 @@ import (
 	"code.cloudfoundry.org/lager/lagertest"
 	"code.cloudfoundry.org/systemcerts"
 	"code.cloudfoundry.org/tlsconfig"
+	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/ghttp"
 
 	. "github.com/onsi/ginkgo"
@@ -320,6 +321,12 @@ var _ = Describe("Downloader", func() {
 
 			It("stops the download", func() {
 				errs := make(chan error)
+				destFile, err := ioutil.TempFile("", "foo")
+				Expect(err).NotTo(HaveOccurred())
+
+				createDestFile := func() (*os.File, error) {
+					return destFile, nil
+				}
 
 				go func() {
 					_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
