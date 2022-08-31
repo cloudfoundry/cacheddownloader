@@ -1,6 +1,7 @@
 package cacheddownloader
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -11,10 +12,14 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/lager"
+	"github.com/hashicorp/go-retryablehttp"
 )
 
 const (
 	MAX_DOWNLOAD_ATTEMPTS = 3
+	IDLE_TIMEOUT          = 10 * time.Second
+	RETRY_WAIT_MIN        = 500 * time.Millisecond
+	RETRY_WAIT_MAX        = 20 * time.Second
 	NoBytesReceived       = -1
 )
 
@@ -41,6 +46,7 @@ func (e *DownloadCancelledError) Error() string {
 	if e.written != NoBytesReceived {
 		msg = fmt.Sprintf("%s, bytes '%d'", msg, e.written)
 	}
+
 	if e.additionalError != nil {
 		msg = fmt.Sprintf("%s, Error: %s", msg, e.additionalError.Error())
 	}
@@ -67,15 +73,23 @@ func (c *idleTimeoutConn) Write(b []byte) (n int, err error) {
 }
 
 type Downloader struct {
-	client                    *http.Client
+	client                    *retryablehttp.Client
 	concurrentDownloadBarrier chan struct{}
 }
 
-func NewDownloader(requestTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
-	return NewDownloaderWithIdleTimeout(requestTimeout, 10*time.Second, maxConcurrentDownloads, tlsConfig)
+func NewDownloader(requestTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config, client ...*retryablehttp.Client) *Downloader {
+	var HTTPClient []*retryablehttp.Client
+
+	if len(client) < 1 {
+		HTTPClient = append(HTTPClient, NewHTTPClient(MAX_DOWNLOAD_ATTEMPTS, requestTimeout, IDLE_TIMEOUT, RETRY_WAIT_MAX, RETRY_WAIT_MIN, tlsConfig))
+	} else {
+		HTTPClient = append(HTTPClient, client[0])
+	}
+
+	return NewDownloaderWithIdleTimeout(HTTPClient[0], maxConcurrentDownloads)
 }
 
-func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
+func NewHTTPClient(maxDownloadAttempts int, requestTimeout, idleTimeout, retryWaitMax, retryWaitMin time.Duration, tlsConfig *tls.Config) *retryablehttp.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: func(netw, addr string) (net.Conn, error) {
@@ -94,10 +108,18 @@ func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time
 		DisableKeepAlives:   true,
 	}
 
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   requestTimeout,
-	}
+	retryClient := retryablehttp.NewClient()
+	retryClient.HTTPClient.Transport = transport
+	retryClient.HTTPClient.Timeout = requestTimeout
+	retryClient.RetryWaitMin = retryWaitMin
+	retryClient.RetryWaitMax = retryWaitMax
+	retryClient.RetryMax = maxDownloadAttempts
+	retryClient.Backoff = retryablehttp.DefaultBackoff
+
+	return retryClient
+}
+
+func NewDownloaderWithIdleTimeout(client *retryablehttp.Client, maxConcurrentDownloads int) *Downloader {
 
 	return &Downloader{
 		client:                    client,
@@ -117,33 +139,25 @@ func (downloader *Downloader) Download(
 	startTime := time.Now()
 	logger = logger.Session("download", lager.Data{"host": url.Host})
 	logger.Info("starting")
-	defer logger.Info("completed", lager.Data{"duration-ns": time.Now().Sub(startTime)})
+	defer logger.Info("completed", lager.Data{"duration-ns": time.Since(startTime)})
 
 	select {
 	case downloader.concurrentDownloadBarrier <- struct{}{}:
 	case <-cancelChan:
-		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Now().Sub(startTime), NoBytesReceived, nil)
+		return "", CachingInfoType{}, NewDownloadCancelledError("download-barrier", time.Since(startTime), NoBytesReceived, nil)
 	}
-	logger.Info("download-barrier", lager.Data{"duration-ns": time.Now().Sub(startTime)})
+	logger.Info("download-barrier", lager.Data{"duration-ns": time.Since(startTime)})
 
 	defer func() {
 		<-downloader.concurrentDownloadBarrier
 	}()
 
-	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
-		path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
-
-		if err == nil {
-			break
-		}
-
-		if _, ok := err.(*DownloadCancelledError); ok {
-			break
-		}
-
-		if _, ok := err.(*ChecksumFailedError); ok {
-			break
-		}
+	path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
+	if _, ok := err.(*DownloadCancelledError); ok {
+		return
+	}
+	if _, ok := err.(*ChecksumFailedError); ok {
+		return
 	}
 
 	if err != nil {
@@ -161,13 +175,19 @@ func (downloader *Downloader) fetchToFile(
 	checksum ChecksumInfoType,
 	cancelChan <-chan struct{},
 ) (string, CachingInfoType, error) {
-	var req *http.Request
+	var req *retryablehttp.Request
 	var err error
 
-	req, err = http.NewRequest("GET", url.String(), nil)
+	req, err = retryablehttp.NewRequest("GET", url.String(), nil)
+
 	if err != nil {
 		return "", CachingInfoType{}, err
 	}
+
+	ctx, cancel := context.WithCancel(req.Request.Context())
+	defer cancel()
+
+	req = req.WithContext(ctx)
 
 	if cachingInfoIn.ETag != "" {
 		req.Header.Add("If-None-Match", cachingInfoIn.ETag)
@@ -179,27 +199,25 @@ func (downloader *Downloader) fetchToFile(
 	completeChan := make(chan struct{})
 	defer close(completeChan)
 
-	if transport, ok := downloader.client.Transport.(*http.Transport); ok {
-		go func() {
-			select {
-			case <-completeChan:
-			case <-cancelChan:
-				transport.CancelRequest(req)
-			}
-		}()
-	}
+	go func() {
+		select {
+		case <-completeChan:
+		case <-cancelChan:
+			cancel()
+		}
+	}()
 
 	startTime := time.Now()
 
 	var resp *http.Response
 	reqStart := time.Now()
 	resp, err = downloader.client.Do(req)
-	logger.Info("fetch-request", lager.Data{"duration-ns": time.Now().Sub(reqStart)})
+	logger.Info("fetch-request", lager.Data{"duration-ns": time.Since(reqStart)})
 
 	if err != nil {
 		select {
 		case <-cancelChan:
-			err = NewDownloadCancelledError("fetch-request", time.Now().Sub(startTime), NoBytesReceived, err)
+			err = NewDownloadCancelledError("fetch-request", time.Since(startTime), NoBytesReceived, err)
 		default:
 		}
 		return "", CachingInfoType{}, err
@@ -274,15 +292,15 @@ func copyToDestinationFile(
 	written, err := io.Copy(io.MultiWriter(ioWriters...), resp.Body)
 
 	if err != nil {
-		logger.Error("copy-failed", err, lager.Data{"duration-ns": time.Now().Sub(startTime), "bytes-written": written})
+		logger.Error("copy-failed", err, lager.Data{"duration-ns": time.Since(startTime), "bytes-written": written})
 		select {
 		case <-cancelChan:
-			err = NewDownloadCancelledError("copy-body", time.Now().Sub(startTime), written, err)
+			err = NewDownloadCancelledError("copy-body", time.Since(startTime), written, err)
 		default:
 		}
 		return "", CachingInfoType{}, err
 	}
-	logger.Info("copy-finished", lager.Data{"duration-ns": time.Now().Sub(startTime), "bytes-written": written})
+	logger.Info("copy-finished", lager.Data{"duration-ns": time.Since(startTime), "bytes-written": written})
 
 	cachingInfoOut := CachingInfoType{
 		ETag:         resp.Header.Get("ETag"),
