@@ -1,6 +1,7 @@
 package cacheddownloader
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -169,6 +170,11 @@ func (downloader *Downloader) fetchToFile(
 		return "", CachingInfoType{}, err
 	}
 
+	ctx, cancel := context.WithCancel(req.Request.Context())
+	defer cancel()
+
+	req = req.WithContext(ctx)
+
 	if cachingInfoIn.ETag != "" {
 		req.Header.Add("If-None-Match", cachingInfoIn.ETag)
 	}
@@ -179,15 +185,13 @@ func (downloader *Downloader) fetchToFile(
 	completeChan := make(chan struct{})
 	defer close(completeChan)
 
-	if transport, ok := downloader.client.Transport.(*http.Transport); ok {
-		go func() {
-			select {
-			case <-completeChan:
-			case <-cancelChan:
-				transport.CancelRequest(req)
-			}
-		}()
-	}
+	go func() {
+		select {
+		case <-completeChan:
+		case <-cancelChan:
+			cancel()
+		}
+	}()
 
 	startTime := time.Now()
 
