@@ -194,12 +194,12 @@ func (downloader *Downloader) fetchToFile(
 	var resp *http.Response
 	reqStart := time.Now()
 	resp, err = downloader.client.Do(req)
-	logger.Info("fetch-request", lager.Data{"duration-ns": time.Now().Sub(reqStart)})
+	logger.Info("fetch-request", lager.Data{"duration-ns": time.Since(reqStart)})
 
 	if err != nil {
 		select {
 		case <-cancelChan:
-			err = NewDownloadCancelledError("fetch-request", time.Now().Sub(startTime), NoBytesReceived, err)
+			err = NewDownloadCancelledError("fetch-request", time.Since(startTime), NoBytesReceived, err)
 		default:
 		}
 		return "", CachingInfoType{}, err
@@ -274,15 +274,15 @@ func copyToDestinationFile(
 	written, err := io.Copy(io.MultiWriter(ioWriters...), resp.Body)
 
 	if err != nil {
-		logger.Error("copy-failed", err, lager.Data{"duration-ns": time.Now().Sub(startTime), "bytes-written": written})
+		logger.Error("copy-failed", err, lager.Data{"duration-ns": time.Since(startTime), "bytes-written": written})
 		select {
 		case <-cancelChan:
-			err = NewDownloadCancelledError("copy-body", time.Now().Sub(startTime), written, err)
+			err = NewDownloadCancelledError("copy-body", time.Since(startTime), written, err)
 		default:
 		}
 		return "", CachingInfoType{}, err
 	}
-	logger.Info("copy-finished", lager.Data{"duration-ns": time.Now().Sub(startTime), "bytes-written": written})
+	logger.Info("copy-finished", lager.Data{"duration-ns": time.Since(startTime), "bytes-written": written})
 
 	cachingInfoOut := CachingInfoType{
 		ETag:         resp.Header.Get("ETag"),
