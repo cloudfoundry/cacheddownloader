@@ -21,11 +21,11 @@ const (
 )
 
 // RetryableConfig .
-// type RetryableConfig struct {
-// 	RetryMax     int
-// 	RetryWaitMin time.Duration
-// 	RetryWaitMax time.Duration
-// }
+type RetryClientConfig struct {
+	RetryMax     int
+	RetryWaitMin time.Duration
+	RetryWaitMax time.Duration
+}
 
 type DownloadCancelledError struct {
 	source   string
@@ -43,6 +43,10 @@ func NewDownloadCancelledError(source string, duration time.Duration, written in
 
 		additionalError: additionalError,
 	}
+}
+
+func init() {
+
 }
 
 func (e *DownloadCancelledError) Error() string {
@@ -80,24 +84,19 @@ type Downloader struct {
 	concurrentDownloadBarrier chan struct{}
 }
 
-type HttpRequester interface {
-	NewRequest(method string, url string, rawBody interface{}) (*retryablehttp.Request, error)
+func NewDownloader(downloadTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config, client ...*retryablehttp.Client) *Downloader {
+	var HTTPClient []*retryablehttp.Client
+
+	if len(client) < 1 {
+		HTTPClient = NewHTTPClient(downloadTimeout, 1*time.Second)
+	} else {
+		HTTPClient = client
+	}
+
+	return NewDownloaderWithIdleTimeout(HTTPClient, maxConcurrentDownloads)
 }
 
-func NewDownloader(requester HttpRequester, requestTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
-
-	return NewDownloaderWithIdleTimeout(requester, requestTimeout, 10*time.Second, maxConcurrentDownloads, tlsConfig)
-}
-
-// func NewRetryableClient()(*http.Client){
-// 	retryClient := retryablehttp.NewClient()
-// 	retryClient.HTTPClient.Transport = transport
-// 	retryClient.HTTPClient.Timeout = requestTimeout
-// 	retryClient.RetryMax = MAX_DOWNLOAD_ATTEMPTS
-// 	retryClient.Backoff = retryablehttp.DefaultBackoff
-// }
-
-func NewDownloaderWithIdleTimeout(requester HttpRequester, requestTimeout time.Duration, idleTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
+func NewHTTPClient(requestTimeout time.Duration, idleTimeout time.Duration, tlsConfig *tls.Config) *retryablehttp.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: func(netw, addr string) (net.Conn, error) {
@@ -122,8 +121,13 @@ func NewDownloaderWithIdleTimeout(requester HttpRequester, requestTimeout time.D
 	retryClient.RetryMax = MAX_DOWNLOAD_ATTEMPTS
 	retryClient.Backoff = retryablehttp.DefaultBackoff
 
+	return retryClient
+}
+
+func NewDownloaderWithIdleTimeout(client *retryablehttp.Client, maxConcurrentDownloads int) *Downloader {
+
 	return &Downloader{
-		client:                    retryClient,
+		client:                    client,
 		concurrentDownloadBarrier: make(chan struct{}, maxConcurrentDownloads),
 	}
 }
@@ -155,6 +159,13 @@ func (downloader *Downloader) Download(
 
 	path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
 	//TODO handel DownloadCancelError && ChecksumFailedError
+	if _, ok := err.(*DownloadCancelledError); ok {
+		return
+	}
+	if _, ok := err.(*ChecksumFailedError); ok {
+		return
+	}
+
 	if err != nil {
 		return "", CachingInfoType{}, err
 	}
