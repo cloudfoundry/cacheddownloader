@@ -46,7 +46,8 @@ var _ = Describe("Downloader", func() {
 	BeforeEach(func() {
 		logger = lagertest.NewTestLogger("test")
 		testServer = nil
-		downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, nil)
+		client := cacheddownloader.NewHTTPClient(1, 1*time.Second, 10*time.Millisecond, 500*time.Millisecond, 1*time.Second, nil)
+		downloader = cacheddownloader.NewDownloaderWithIdleTimeout(client, 10)
 		lock = &sync.Mutex{}
 		cancelChan = make(chan struct{}, 0)
 	})
@@ -240,7 +241,7 @@ var _ = Describe("Downloader", func() {
 
 			BeforeEach(func() {
 				done = make(chan struct{}, 1)
-				client := cacheddownloader.NewHTTPClient(1*time.Second, 30*time.Millisecond, nil)
+				client := cacheddownloader.NewHTTPClient(1, 1*time.Second, 10*time.Millisecond, 500*time.Millisecond, 1*time.Second, nil)
 				downloader = cacheddownloader.NewDownloaderWithIdleTimeout(client, 10)
 
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -323,6 +324,8 @@ var _ = Describe("Downloader", func() {
 
 			It("cancels the request and returns the error", func() {
 				errs := make(chan error)
+				client := cacheddownloader.NewHTTPClient(1, 1*time.Second, 10*time.Millisecond, 500*time.Millisecond, 1*time.Second, nil)
+				downloader = cacheddownloader.NewDownloaderWithIdleTimeout(client, 10)
 				go func() {
 					_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
 					errs <- err
@@ -606,7 +609,8 @@ var _ = Describe("Downloader", func() {
 			barrier = make(chan interface{}, 1)
 			results = make(chan bool, 1)
 
-			downloader = cacheddownloader.NewDownloader(1*time.Second, 1, nil)
+			client := cacheddownloader.NewHTTPClient(1, 1*time.Second, 10*time.Second, 500*time.Millisecond, 20*time.Second, nil)
+			downloader = cacheddownloader.NewDownloader(1*time.Second, 1, nil, client)
 
 			var err error
 			tempDir, err = ioutil.TempDir("", "temp-dl-dir")
