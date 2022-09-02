@@ -17,15 +17,11 @@ import (
 
 const (
 	MAX_DOWNLOAD_ATTEMPTS = 3
+	IDLE_TIMEOUT          = 10 * time.Second
+	RETRY_WAIT_MIN        = 500 * time.Millisecond
+	RETRY_WAIT_MAX        = 20 * time.Second
 	NoBytesReceived       = -1
 )
-
-// RetryableConfig .
-type RetryClientConfig struct {
-	RetryMax     int
-	RetryWaitMin time.Duration
-	RetryWaitMax time.Duration
-}
 
 type DownloadCancelledError struct {
 	source   string
@@ -84,11 +80,11 @@ type Downloader struct {
 	concurrentDownloadBarrier chan struct{}
 }
 
-func NewDownloader(downloadTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config, client ...*retryablehttp.Client) *Downloader {
+func NewDownloader(requestTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config, client ...*retryablehttp.Client) *Downloader {
 	var HTTPClient []*retryablehttp.Client
 
 	if len(client) < 1 {
-		HTTPClient = append(HTTPClient, NewHTTPClient(downloadTimeout, 1*time.Second, tlsConfig))
+		HTTPClient = append(HTTPClient, NewHTTPClient(MAX_DOWNLOAD_ATTEMPTS, requestTimeout, IDLE_TIMEOUT, RETRY_WAIT_MAX, RETRY_WAIT_MIN, tlsConfig))
 	} else {
 		HTTPClient = append(HTTPClient, client[0])
 	}
@@ -96,7 +92,7 @@ func NewDownloader(downloadTimeout time.Duration, maxConcurrentDownloads int, tl
 	return NewDownloaderWithIdleTimeout(HTTPClient[0], maxConcurrentDownloads)
 }
 
-func NewHTTPClient(requestTimeout time.Duration, idleTimeout time.Duration, tlsConfig *tls.Config) *retryablehttp.Client {
+func NewHTTPClient(maxDownloadAttempts int, requestTimeout, idleTimeout, retryWaitMax, retryWaitMin time.Duration, tlsConfig *tls.Config) *retryablehttp.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: func(netw, addr string) (net.Conn, error) {
@@ -118,7 +114,9 @@ func NewHTTPClient(requestTimeout time.Duration, idleTimeout time.Duration, tlsC
 	retryClient := retryablehttp.NewClient()
 	retryClient.HTTPClient.Transport = transport
 	retryClient.HTTPClient.Timeout = requestTimeout
-	retryClient.RetryMax = MAX_DOWNLOAD_ATTEMPTS
+	retryClient.RetryWaitMin = retryWaitMin
+	retryClient.RetryWaitMax = retryWaitMax
+	retryClient.RetryMax = maxDownloadAttempts
 	retryClient.Backoff = retryablehttp.DefaultBackoff
 
 	return retryClient
