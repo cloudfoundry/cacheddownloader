@@ -41,10 +41,6 @@ func NewDownloadCancelledError(source string, duration time.Duration, written in
 	}
 }
 
-func init() {
-
-}
-
 func (e *DownloadCancelledError) Error() string {
 	msg := fmt.Sprintf("Download cancelled: source '%s', duration '%s'", e.source, e.duration)
 	if e.written != NoBytesReceived {
