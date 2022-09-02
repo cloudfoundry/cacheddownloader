@@ -88,12 +88,12 @@ func NewDownloader(downloadTimeout time.Duration, maxConcurrentDownloads int, tl
 	var HTTPClient []*retryablehttp.Client
 
 	if len(client) < 1 {
-		HTTPClient = NewHTTPClient(downloadTimeout, 1*time.Second)
+		HTTPClient = append(HTTPClient, NewHTTPClient(downloadTimeout, 1*time.Second, tlsConfig))
 	} else {
-		HTTPClient = client
+		HTTPClient = append(HTTPClient, client[0])
 	}
 
-	return NewDownloaderWithIdleTimeout(HTTPClient, maxConcurrentDownloads)
+	return NewDownloaderWithIdleTimeout(HTTPClient[0], maxConcurrentDownloads)
 }
 
 func NewHTTPClient(requestTimeout time.Duration, idleTimeout time.Duration, tlsConfig *tls.Config) *retryablehttp.Client {
