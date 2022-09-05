@@ -46,6 +46,7 @@ func (e *DownloadCancelledError) Error() string {
 	if e.written != NoBytesReceived {
 		msg = fmt.Sprintf("%s, bytes '%d'", msg, e.written)
 	}
+
 	if e.additionalError != nil {
 		msg = fmt.Sprintf("%s, Error: %s", msg, e.additionalError.Error())
 	}
