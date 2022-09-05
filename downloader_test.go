@@ -3,6 +3,7 @@ package cacheddownloader_test
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -236,10 +237,8 @@ var _ = Describe("Downloader", func() {
 		})
 
 		Context("when the read exceeds the deadline timeout", func() {
-			var done chan struct{}
 
 			BeforeEach(func() {
-				done = make(chan struct{}, 1)
 				client := cacheddownloader.NewHTTPClient(1, 1*time.Second, 10*time.Millisecond, 500*time.Millisecond, 1*time.Second, nil)
 				downloader = cacheddownloader.NewDownloaderWithIdleTimeout(client, 10)
 
@@ -250,26 +249,14 @@ var _ = Describe("Downloader", func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
 			})
 
-			AfterEach(func() {
-				Eventually(done).Should(HaveLen(1))
+			It("fails with a read error", func() {
+
+				_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
+				unWrappedError := errors.Unwrap(err)
+				uErr, ok := unWrappedError.(*url.Error)
+				Expect(ok).To(BeTrue())
+				Expect(uErr.Err.Error()).To(ContainSubstring("read"))
 			})
-
-			// It("fails with a nested read error", func() {
-			// 	errs := make(chan error)
-
-			// 	go func() {
-			// 		_, _, err := downloader.Download(logger, serverUrl, createDestFile, cacheddownloader.CachingInfoType{}, cacheddownloader.ChecksumInfoType{}, cancelChan)
-			// 		errs <- err
-			// 	}()
-
-			// 	var err error
-			// 	Eventually(errs).Should(Receive(&err))
-			// 	uErr, ok := err.(*url.Error)
-			// 	Expect(ok).To(BeTrue())
-			// 	opErr, ok := uErr.Err.(*net.OpError)
-			// 	Expect(ok).To(BeTrue())
-			// 	Expect(opErr.Op).To(Equal("read"))
-			// })
 		})
 
 		Context("when the Content-Length does not match the downloaded file size", func() {

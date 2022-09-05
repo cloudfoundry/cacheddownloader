@@ -153,7 +153,6 @@ func (downloader *Downloader) Download(
 	}()
 
 	path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
-	//TODO test handling of DownloadCancelledError && ChecksumFailedError
 	if _, ok := err.(*DownloadCancelledError); ok {
 		return
 	}
