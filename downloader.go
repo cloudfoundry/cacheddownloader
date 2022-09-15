@@ -179,18 +179,17 @@ func (downloader *Downloader) fetchToFile(
 	if err != nil {
 		return "", CachingInfoType{}, err
 	}
-
-	ctx, cancel := context.WithCancel(req.Context())
-	defer cancel()
-
-	req = req.WithContext(ctx)
-
 	if cachingInfoIn.ETag != "" {
 		req.Header.Add("If-None-Match", cachingInfoIn.ETag)
 	}
 	if cachingInfoIn.LastModified != "" {
 		req.Header.Add("If-Modified-Since", cachingInfoIn.LastModified)
 	}
+
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+
+	req = req.WithContext(ctx)
 
 	completeChan := make(chan struct{})
 	defer close(completeChan)
