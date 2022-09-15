@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	MAX_DOWNLOAD_ATTEMPTS = 4
+	MAX_DOWNLOAD_ATTEMPTS = 3
 	IDLE_TIMEOUT          = 10 * time.Second
-	RETRY_WAIT_MIN        = 200 * time.Millisecond
-	RETRY_WAIT_MAX        = 20 * time.Second
+	RETRY_WAIT_MIN        = 500 * time.Millisecond
+	RETRY_WAIT_MAX        = 5 * time.Second
 	NoBytesReceived       = -1
 )
 
@@ -102,7 +102,7 @@ func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time
 				tc.SetKeepAlive(true)
 				tc.SetKeepAlivePeriod(30 * time.Second)
 			}
-			return &idleTimeoutConn{IDLE_TIMEOUT, c}, nil
+			return &idleTimeoutConn{idleTimeout, c}, nil
 		},
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig:     tlsConfig,
