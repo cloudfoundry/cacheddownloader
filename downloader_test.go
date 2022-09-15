@@ -242,7 +242,7 @@ var _ = Describe("Downloader", func() {
 			var done chan struct{}
 
 			BeforeEach(func() {
-				done = make(chan struct{}, 3)
+				done = make(chan struct{}, cacheddownloader.MAX_DOWNLOAD_ATTEMPTS)
 				downloader = cacheddownloader.NewDownloaderWithIdleTimeout(1*time.Second, 30*time.Millisecond, 10, nil)
 
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +254,7 @@ var _ = Describe("Downloader", func() {
 			})
 
 			AfterEach(func() {
-				Eventually(done).Should(HaveLen(3))
+				Eventually(done).Should(HaveLen(cacheddownloader.MAX_DOWNLOAD_ATTEMPTS))
 			})
 
 			It("fails with a nested read error", func() {
