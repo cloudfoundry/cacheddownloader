@@ -266,7 +266,7 @@ var _ = Describe("Downloader", func() {
 				}()
 
 				var err error
-				Eventually(errs, 4*time.Second).Should(Receive(&err))
+				Eventually(errs, 1*time.Minute).Should(Receive(&err))
 				uErr, ok := err.(*url.Error)
 				Expect(ok).To(BeTrue())
 				opErr, ok := uErr.Err.(*net.OpError)
