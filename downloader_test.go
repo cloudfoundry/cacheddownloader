@@ -202,9 +202,9 @@ var _ = Describe("Downloader", func() {
 					downloadedFiles <- downloadedFile
 				}()
 
-				Eventually(requestInitiated).Should(Receive())
-				Eventually(requestInitiated).Should(Receive())
-				Eventually(requestInitiated).Should(Receive())
+				for i := 0; i < cacheddownloader.MAX_DOWNLOAD_ATTEMPTS; i++ {
+					Eventually(requestInitiated, 2*time.Second).Should(Receive())
+				}
 
 				Expect(<-errs).To(HaveOccurred())
 				Expect(<-downloadedFiles).To(BeEmpty())
@@ -266,7 +266,7 @@ var _ = Describe("Downloader", func() {
 				}()
 
 				var err error
-				Eventually(errs).Should(Receive(&err))
+				Eventually(errs, 2*time.Second).Should(Receive(&err))
 				uErr, ok := err.(*url.Error)
 				Expect(ok).To(BeTrue())
 				opErr, ok := uErr.Err.(*net.OpError)
