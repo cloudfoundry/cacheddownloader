@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -12,16 +13,24 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/lager"
-	"github.com/hashicorp/go-retryablehttp"
 )
 
 const (
-	MAX_DOWNLOAD_ATTEMPTS = 3
+	MAX_DOWNLOAD_ATTEMPTS = 5
 	IDLE_TIMEOUT          = 10 * time.Second
 	RETRY_WAIT_MIN        = 500 * time.Millisecond
-	RETRY_WAIT_MAX        = 20 * time.Second
+	RETRY_WAIT_MAX        = 16 * time.Second
 	NoBytesReceived       = -1
 )
+
+func Backoff(min, max time.Duration, attemptNum int) time.Duration {
+	mult := math.Pow(2, float64(attemptNum)) * float64(min)
+	sleep := time.Duration(mult)
+	if float64(sleep) != mult || sleep > max {
+		sleep = max
+	}
+	return sleep
+}
 
 type DownloadCancelledError struct {
 	source   string
@@ -73,23 +82,15 @@ func (c *idleTimeoutConn) Write(b []byte) (n int, err error) {
 }
 
 type Downloader struct {
-	client                    *retryablehttp.Client
+	client                    *http.Client
 	concurrentDownloadBarrier chan struct{}
 }
 
-func NewDownloader(requestTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config, client ...*retryablehttp.Client) *Downloader {
-	var HTTPClient []*retryablehttp.Client
-
-	if len(client) < 1 {
-		HTTPClient = append(HTTPClient, NewHTTPClient(MAX_DOWNLOAD_ATTEMPTS, requestTimeout, IDLE_TIMEOUT, RETRY_WAIT_MAX, RETRY_WAIT_MIN, tlsConfig))
-	} else {
-		HTTPClient = append(HTTPClient, client[0])
-	}
-
-	return NewDownloaderWithIdleTimeout(HTTPClient[0], maxConcurrentDownloads)
+func NewDownloader(requestTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
+	return NewDownloaderWithIdleTimeout(requestTimeout, 10*time.Second, maxConcurrentDownloads, tlsConfig)
 }
 
-func NewHTTPClient(maxDownloadAttempts int, requestTimeout, idleTimeout, retryWaitMax, retryWaitMin time.Duration, tlsConfig *tls.Config) *retryablehttp.Client {
+func NewDownloaderWithIdleTimeout(requestTimeout time.Duration, idleTimeout time.Duration, maxConcurrentDownloads int, tlsConfig *tls.Config) *Downloader {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: func(netw, addr string) (net.Conn, error) {
@@ -101,26 +102,16 @@ func NewHTTPClient(maxDownloadAttempts int, requestTimeout, idleTimeout, retryWa
 				tc.SetKeepAlive(true)
 				tc.SetKeepAlivePeriod(30 * time.Second)
 			}
-			return &idleTimeoutConn{idleTimeout, c}, nil
+			return &idleTimeoutConn{IDLE_TIMEOUT, c}, nil
 		},
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig:     tlsConfig,
 		DisableKeepAlives:   true,
 	}
-
-	retryClient := retryablehttp.NewClient()
-	retryClient.HTTPClient.Transport = transport
-	retryClient.HTTPClient.Timeout = requestTimeout
-	retryClient.RetryWaitMin = retryWaitMin
-	retryClient.RetryWaitMax = retryWaitMax
-	retryClient.RetryMax = maxDownloadAttempts
-	retryClient.Backoff = retryablehttp.DefaultBackoff
-
-	return retryClient
-}
-
-func NewDownloaderWithIdleTimeout(client *retryablehttp.Client, maxConcurrentDownloads int) *Downloader {
-
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   requestTimeout,
+	}
 	return &Downloader{
 		client:                    client,
 		concurrentDownloadBarrier: make(chan struct{}, maxConcurrentDownloads),
@@ -152,12 +143,18 @@ func (downloader *Downloader) Download(
 		<-downloader.concurrentDownloadBarrier
 	}()
 
-	path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
-	if _, ok := err.(*DownloadCancelledError); ok {
-		return
-	}
-	if _, ok := err.(*ChecksumFailedError); ok {
-		return
+	for attempt := 0; attempt < MAX_DOWNLOAD_ATTEMPTS; attempt++ {
+		path, cachingInfoOut, err = downloader.fetchToFile(logger, url, createDestination, cachingInfoIn, checksum, cancelChan)
+		if err == nil {
+			break
+		}
+		if _, ok := err.(*DownloadCancelledError); ok {
+			break
+		}
+		if _, ok := err.(*ChecksumFailedError); ok {
+			break
+		}
+		time.Sleep(Backoff(RETRY_WAIT_MIN, RETRY_WAIT_MAX, attempt))
 	}
 
 	if err != nil {
@@ -175,16 +172,15 @@ func (downloader *Downloader) fetchToFile(
 	checksum ChecksumInfoType,
 	cancelChan <-chan struct{},
 ) (string, CachingInfoType, error) {
-	var req *retryablehttp.Request
+	var req *http.Request
 	var err error
 
-	req, err = retryablehttp.NewRequest("GET", url.String(), nil)
-
+	req, err = http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		return "", CachingInfoType{}, err
 	}
 
-	ctx, cancel := context.WithCancel(req.Request.Context())
+	ctx, cancel := context.WithCancel(req.Context())
 	defer cancel()
 
 	req = req.WithContext(ctx)
