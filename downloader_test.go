@@ -192,7 +192,7 @@ var _ = Describe("Downloader", func() {
 				serverUrl, _ = url.Parse(testServer.URL + "/somepath")
 			})
 
-			It("should retry 3 times and return an error", func() {
+			It("should retry cacheddownloader.MAX_DOWNLOAD_ATTEMPTS times and return an error", func() {
 				errs := make(chan error)
 				downloadedFiles := make(chan string)
 
@@ -203,7 +203,7 @@ var _ = Describe("Downloader", func() {
 				}()
 
 				for i := 0; i < cacheddownloader.MAX_DOWNLOAD_ATTEMPTS; i++ {
-					Eventually(requestInitiated, 2*time.Second).Should(Receive())
+					Eventually(requestInitiated, 5*time.Second).Should(Receive())
 				}
 
 				Expect(<-errs).To(HaveOccurred())
