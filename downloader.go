@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,16 +21,22 @@ const (
 	IDLE_TIMEOUT          = 10 * time.Second
 	RETRY_WAIT_MIN        = 500 * time.Millisecond
 	RETRY_WAIT_MAX        = 5 * time.Second
+	MAX_JITTER            = 200 * time.Millisecond
 	NoBytesReceived       = -1
 )
 
-func Backoff(min, max time.Duration, attemptNum int) time.Duration {
-	mult := math.Pow(2, float64(attemptNum)) * float64(min)
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+func backoff(minRetry, maxRetry, maxJitter time.Duration, attemptNum int) time.Duration {
+	mult := math.Pow(2, float64(attemptNum)) * float64(minRetry)
 	sleep := time.Duration(mult)
-	if float64(sleep) != mult || sleep > max {
-		sleep = max
+	if float64(sleep) != mult || sleep > maxRetry {
+		sleep = maxRetry
 	}
-	return sleep
+	jitter := (MAX_JITTER / 100) * time.Duration(rand.Intn(100))
+	return sleep + jitter
 }
 
 type DownloadCancelledError struct {
@@ -154,7 +161,7 @@ func (downloader *Downloader) Download(
 		if _, ok := err.(*ChecksumFailedError); ok {
 			break
 		}
-		time.Sleep(Backoff(RETRY_WAIT_MIN, RETRY_WAIT_MAX, attempt))
+		time.Sleep(backoff(RETRY_WAIT_MIN, RETRY_WAIT_MAX, MAX_JITTER, attempt))
 	}
 
 	if err != nil {
