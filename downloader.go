@@ -25,18 +25,18 @@ const (
 	NoBytesReceived       = -1
 )
 
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
 func backoff(minRetry, maxRetry, maxJitter time.Duration, attemptNum int) time.Duration {
 	mult := math.Pow(2, float64(attemptNum)) * float64(minRetry)
 	sleep := time.Duration(mult)
 	if float64(sleep) != mult || sleep > maxRetry {
 		sleep = maxRetry
 	}
-	return sleep + jitter()
-}
-
-func jitter() time.Duration {
-	rand.Seed(time.Now().UnixNano())
-	return ((MAX_JITTER / 100) * time.Duration(rand.Intn(100)))
+	jitter := (MAX_JITTER / 100) * time.Duration(rand.Intn(100))
+	return sleep + jitter
 }
 
 type DownloadCancelledError struct {
