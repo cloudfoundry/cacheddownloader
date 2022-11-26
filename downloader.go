@@ -161,10 +161,12 @@ func (downloader *Downloader) Download(
 		if _, ok := err.(*ChecksumFailedError); ok {
 			break
 		}
+		logger.Info("retrying", lager.Data{"attempt": attempt})
 		time.Sleep(backoff(RETRY_WAIT_MIN, RETRY_WAIT_MAX, MAX_JITTER, attempt))
 	}
 
 	if err != nil {
+		logger.Error("download-failed", err)
 		return "", CachingInfoType{}, err
 	}
 
