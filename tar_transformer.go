@@ -47,8 +47,6 @@ func TarTransform(source string, destination string) (int64, error) {
 	default:
 		return 0, ErrUnknownArchiveFormat
 	}
-
-	panic("unreachable")
 }
 
 func mimeType(fd *os.File) (string, error) {
