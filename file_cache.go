@@ -10,7 +10,7 @@ import (
 
 	"code.cloudfoundry.org/archiver/compressor"
 	"code.cloudfoundry.org/archiver/extractor"
-	"code.cloudfoundry.org/lager"
+	"code.cloudfoundry.org/lager/v3"
 )
 
 var (

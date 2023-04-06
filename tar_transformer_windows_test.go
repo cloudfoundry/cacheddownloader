@@ -8,7 +8,7 @@ import (
 	"code.cloudfoundry.org/archiver/extractor/test_helper"
 	. "code.cloudfoundry.org/cacheddownloader"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
