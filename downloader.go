@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	MAX_DOWNLOAD_ATTEMPTS = 6
+	MAX_DOWNLOAD_ATTEMPTS = 4
 	IDLE_TIMEOUT          = 10 * time.Second
-	RETRY_WAIT_MIN        = 1000 * time.Millisecond
+	RETRY_WAIT_MIN        = 500 * time.Millisecond
 	RETRY_WAIT_MAX        = 5 * time.Second
 	MAX_JITTER            = 200 * time.Millisecond
 	NoBytesReceived       = -1
