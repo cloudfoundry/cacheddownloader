@@ -365,10 +365,10 @@ func (c *FileCache) remove(logger lager.Logger, cacheKey string) {
 
 func (c *FileCache) updateOldEntries(logger lager.Logger, cacheKey string, entry *FileCacheEntry) {
 	if entry != nil {
-		if !entry.inUse() && entry.ExpandedDirectoryPath != "" {
+		if entry.ExpandedDirectoryPath != "" {
 			// put it in the oldEntries Cache since somebody may still be using the directory
 			c.OldEntries[cacheKey+entry.ExpandedDirectoryPath] = entry
-		} else {
+	   	} else if !entry.inUse() {
 			// We need to remove it from oldEntries
 			delete(c.OldEntries, cacheKey+entry.ExpandedDirectoryPath)
 		}
