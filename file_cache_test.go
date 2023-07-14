@@ -804,13 +804,13 @@ var _ = Describe("FileCache", func() {
 		})
 		Context("when a directory is first got, then added", func() {
 			var a1, a2 *os.File
-           		var dir1, dir2 string
+			var dir1, dir2 string
 
 			JustBeforeEach(func() {
 				a1 = createArchive("cache-test-file1", "new-file-content1")
 				a2 = createArchive("cache-test-file2", "new-file-content1")
 				_, ci, _ := cache.GetDirectory(logger, cacheKey)
-		
+
 				ci.LastModified = "111"
 				dir1, _ = cache.AddDirectory(logger, cacheKey, a1.Name(), fileSize, ci)
 
@@ -825,15 +825,15 @@ var _ = Describe("FileCache", func() {
 				os.RemoveAll(a2.Name())
 			})
 
-			It("closes first the new, then the old", func() {				
+			It("closes first the new, then the old", func() {
 				Expect(cache.CloseDirectory(logger, cacheKey, dir2)).To(Succeed())
 				Expect(cache.CloseDirectory(logger, cacheKey, dir1)).To(Succeed())
 			})
 
-			It("closes first the old, then the new", func() {				
+			It("closes first the old, then the new", func() {
 				Expect(cache.CloseDirectory(logger, cacheKey, dir1)).To(Succeed())
 				Expect(cache.CloseDirectory(logger, cacheKey, dir2)).To(Succeed())
-		   	})			
+			})
 		})
 	})
 

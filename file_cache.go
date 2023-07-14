@@ -368,7 +368,7 @@ func (c *FileCache) updateOldEntries(logger lager.Logger, cacheKey string, entry
 		if entry.ExpandedDirectoryPath != "" {
 			// put it in the oldEntries Cache since somebody may still be using the directory
 			c.OldEntries[cacheKey+entry.ExpandedDirectoryPath] = entry
-	   	} else if !entry.inUse() {
+		} else if !entry.inUse() {
 			// We need to remove it from oldEntries
 			delete(c.OldEntries, cacheKey+entry.ExpandedDirectoryPath)
 		}
