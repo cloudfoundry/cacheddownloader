@@ -3,6 +3,7 @@ package cacheddownloader_test
 import (
 	"crypto/md5"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -16,7 +17,6 @@ import (
 
 	"code.cloudfoundry.org/cacheddownloader"
 	"code.cloudfoundry.org/lager/v3/lagertest"
-	"code.cloudfoundry.org/systemcerts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
@@ -1397,7 +1397,7 @@ var _ = Describe("File cache", func() {
 				ghttp.RespondWith(http.StatusOK, "content", header),
 			))
 
-			caCertPool := systemcerts.NewCertPool()
+			caCertPool := x509.NewCertPool()
 			goodCACert, err := ioutil.ReadFile("fixtures/goodCA.crt")
 			Expect(err).NotTo(HaveOccurred())
 			ok := caCertPool.AppendCertsFromPEM(goodCACert)
@@ -1407,7 +1407,7 @@ var _ = Describe("File cache", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			tlsConfig := &tls.Config{
-				RootCAs: caCertPool.AsX509CertPool(),
+				RootCAs: caCertPool,
 			}
 
 			downloader = cacheddownloader.NewDownloader(time.Second, MAX_CONCURRENT_DOWNLOADS, tlsConfig)
