@@ -1,0 +1,141 @@
+# code.cloudfoundry.org/archiver v0.0.0-20231206170638-1923b319e771
+## explicit; go 1.20
+code.cloudfoundry.org/archiver/compressor
+code.cloudfoundry.org/archiver/extractor
+code.cloudfoundry.org/archiver/extractor/test_helper
+# code.cloudfoundry.org/lager/v3 v3.0.3
+## explicit; go 1.19
+code.cloudfoundry.org/lager/v3
+code.cloudfoundry.org/lager/v3/internal/truncate
+code.cloudfoundry.org/lager/v3/lagerctx
+code.cloudfoundry.org/lager/v3/lagertest
+# code.cloudfoundry.org/tlsconfig v0.0.0-20231017135636-f0e44068c22f
+## explicit; go 1.19
+code.cloudfoundry.org/tlsconfig
+# github.com/cyphar/filepath-securejoin v0.2.4
+## explicit; go 1.13
+github.com/cyphar/filepath-securejoin
+# github.com/go-logr/logr v1.3.0
+## explicit; go 1.18
+github.com/go-logr/logr
+github.com/go-logr/logr/funcr
+# github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572
+## explicit; go 1.13
+github.com/go-task/slim-sprig
+# github.com/golang/protobuf v1.5.3
+## explicit; go 1.9
+github.com/golang/protobuf/proto
+# github.com/google/go-cmp v0.6.0
+## explicit; go 1.13
+github.com/google/go-cmp/cmp
+github.com/google/go-cmp/cmp/internal/diff
+github.com/google/go-cmp/cmp/internal/flags
+github.com/google/go-cmp/cmp/internal/function
+github.com/google/go-cmp/cmp/internal/value
+# github.com/google/pprof v0.0.0-20230323073829-e72429f035bd
+## explicit; go 1.19
+github.com/google/pprof/profile
+# github.com/onsi/ginkgo/v2 v2.13.2
+## explicit; go 1.18
+github.com/onsi/ginkgo/v2
+github.com/onsi/ginkgo/v2/config
+github.com/onsi/ginkgo/v2/formatter
+github.com/onsi/ginkgo/v2/ginkgo
+github.com/onsi/ginkgo/v2/ginkgo/build
+github.com/onsi/ginkgo/v2/ginkgo/command
+github.com/onsi/ginkgo/v2/ginkgo/generators
+github.com/onsi/ginkgo/v2/ginkgo/internal
+github.com/onsi/ginkgo/v2/ginkgo/labels
+github.com/onsi/ginkgo/v2/ginkgo/outline
+github.com/onsi/ginkgo/v2/ginkgo/run
+github.com/onsi/ginkgo/v2/ginkgo/unfocus
+github.com/onsi/ginkgo/v2/ginkgo/watch
+github.com/onsi/ginkgo/v2/internal
+github.com/onsi/ginkgo/v2/internal/global
+github.com/onsi/ginkgo/v2/internal/interrupt_handler
+github.com/onsi/ginkgo/v2/internal/parallel_support
+github.com/onsi/ginkgo/v2/internal/testingtproxy
+github.com/onsi/ginkgo/v2/reporters
+github.com/onsi/ginkgo/v2/types
+# github.com/onsi/gomega v1.30.0
+## explicit; go 1.18
+github.com/onsi/gomega
+github.com/onsi/gomega/format
+github.com/onsi/gomega/gbytes
+github.com/onsi/gomega/ghttp
+github.com/onsi/gomega/internal
+github.com/onsi/gomega/internal/gutil
+github.com/onsi/gomega/matchers
+github.com/onsi/gomega/matchers/support/goraph/bipartitegraph
+github.com/onsi/gomega/matchers/support/goraph/edge
+github.com/onsi/gomega/matchers/support/goraph/node
+github.com/onsi/gomega/matchers/support/goraph/util
+github.com/onsi/gomega/types
+# github.com/openzipkin/zipkin-go v0.4.2
+## explicit; go 1.18
+github.com/openzipkin/zipkin-go/idgenerator
+github.com/openzipkin/zipkin-go/model
+# golang.org/x/net v0.17.0
+## explicit; go 1.17
+golang.org/x/net/context
+golang.org/x/net/html
+golang.org/x/net/html/atom
+golang.org/x/net/html/charset
+# golang.org/x/sys v0.14.0
+## explicit; go 1.18
+golang.org/x/sys/unix
+# golang.org/x/text v0.13.0
+## explicit; go 1.17
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/htmlindex
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/japanese
+golang.org/x/text/encoding/korean
+golang.org/x/text/encoding/simplifiedchinese
+golang.org/x/text/encoding/traditionalchinese
+golang.org/x/text/encoding/unicode
+golang.org/x/text/internal/language
+golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/tag
+golang.org/x/text/internal/utf8internal
+golang.org/x/text/language
+golang.org/x/text/runes
+golang.org/x/text/transform
+# golang.org/x/tools v0.14.0
+## explicit; go 1.18
+golang.org/x/tools/go/ast/inspector
+golang.org/x/tools/internal/typeparams
+# google.golang.org/protobuf v1.31.0
+## explicit; go 1.11
+google.golang.org/protobuf/encoding/prototext
+google.golang.org/protobuf/encoding/protowire
+google.golang.org/protobuf/internal/descfmt
+google.golang.org/protobuf/internal/descopts
+google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/encoding/defval
+google.golang.org/protobuf/internal/encoding/messageset
+google.golang.org/protobuf/internal/encoding/tag
+google.golang.org/protobuf/internal/encoding/text
+google.golang.org/protobuf/internal/errors
+google.golang.org/protobuf/internal/filedesc
+google.golang.org/protobuf/internal/filetype
+google.golang.org/protobuf/internal/flags
+google.golang.org/protobuf/internal/genid
+google.golang.org/protobuf/internal/impl
+google.golang.org/protobuf/internal/order
+google.golang.org/protobuf/internal/pragma
+google.golang.org/protobuf/internal/set
+google.golang.org/protobuf/internal/strs
+google.golang.org/protobuf/internal/version
+google.golang.org/protobuf/proto
+google.golang.org/protobuf/reflect/protodesc
+google.golang.org/protobuf/reflect/protoreflect
+google.golang.org/protobuf/reflect/protoregistry
+google.golang.org/protobuf/runtime/protoiface
+google.golang.org/protobuf/runtime/protoimpl
+google.golang.org/protobuf/types/descriptorpb
+# gopkg.in/yaml.v3 v3.0.1
+## explicit
+gopkg.in/yaml.v3
