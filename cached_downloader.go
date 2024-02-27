@@ -309,7 +309,7 @@ func (c *cachedDownloader) acquireLimiter(logger lager.Logger, cacheKey string, 
 	logger = logger.Session("acquire-rate-limiter", lager.Data{"cache-key": cacheKey})
 	logger.Info("starting")
 	defer func() {
-		logger.Info("completed", lager.Data{"duration-ns": time.Now().Sub(startTime)})
+		logger.Info("completed", lager.Data{"duration-ns": time.Since(startTime)})
 	}()
 
 	for {
@@ -326,7 +326,7 @@ func (c *cachedDownloader) acquireLimiter(logger lager.Logger, cacheKey string, 
 		select {
 		case <-rateLimiter:
 		case <-cancelChan:
-			return nil, NewDownloadCancelledError("acquire-limiter", time.Now().Sub(startTime), NoBytesReceived, nil)
+			return nil, NewDownloadCancelledError("acquire-limiter", time.Since(startTime), NoBytesReceived, nil)
 		}
 	}
 }
