@@ -49,7 +49,7 @@ var _ = Describe("Downloader", func() {
 		testServer = nil
 		downloader = cacheddownloader.NewDownloader(downloadTimeout, 10, nil)
 		lock = &sync.Mutex{}
-		cancelChan = make(chan struct{}, 0)
+		cancelChan = make(chan struct{})
 	})
 
 	Describe("Download", func() {
@@ -679,7 +679,7 @@ var _ = Describe("Downloader", func() {
 
 		It("only allows n downloads at the same time", func() {
 			go func() {
-				downloadTestFile(make(chan struct{}, 0))
+				downloadTestFile(make(chan struct{}))
 				barrier <- nil
 			}()
 
@@ -691,12 +691,12 @@ var _ = Describe("Downloader", func() {
 		Context("when cancelling", func() {
 			It("bails when waiting", func() {
 				go func() {
-					downloadTestFile(make(chan struct{}, 0))
+					downloadTestFile(make(chan struct{}))
 					barrier <- nil
 				}()
 
 				<-barrier
-				cancelChan := make(chan struct{}, 0)
+				cancelChan := make(chan struct{})
 				close(cancelChan)
 				_, _, err := downloadTestFile(cancelChan)
 				Expect(err).To(BeAssignableToTypeOf(&cacheddownloader.DownloadCancelledError{}))
