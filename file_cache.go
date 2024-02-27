@@ -396,8 +396,6 @@ func (c *FileCache) makeRoom(logger lager.Logger, size int64, excludedCacheKey s
 		usedSpace -= oldestEntry.Size
 		c.remove(logger, oldestCacheKey)
 	}
-
-	return
 }
 
 func (c *FileCache) usedSpace(logger lager.Logger) int64 {
