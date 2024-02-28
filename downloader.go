@@ -137,7 +137,7 @@ func (downloader *Downloader) Download(
 	startTime := time.Now()
 	logger = logger.Session("download", lager.Data{"host": url.Host})
 	logger.Info("starting")
-	defer logger.Info("completed", lager.Data{"duration-ns": time.Since(startTime)})
+	defer func() { logger.Info("completed", lager.Data{"duration-ns": time.Since(startTime)}) }()
 
 	select {
 	case downloader.concurrentDownloadBarrier <- struct{}{}:
