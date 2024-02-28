@@ -24,8 +24,8 @@ var _ = Describe("Integration", func() {
 		server              *httptest.Server
 		serverPath          string
 		cachedPath          string
-		cacheMaxSizeInBytes int64         = 32000
-		downloadTimeout     time.Duration = time.Second
+		cacheMaxSizeInBytes int64 = 32000
+		downloadTimeout           = time.Second
 		checksum            cacheddownloader.ChecksumInfoType
 		url                 *url.URL
 		logger              *lagertest.TestLogger
