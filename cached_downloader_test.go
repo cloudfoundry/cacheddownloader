@@ -1182,8 +1182,8 @@ var _ = Describe("File cache", func() {
 			))
 
 			file, size, err := cachedDownloader.Fetch(logger, url, cacheKey, checksum, cancelChan)
-			defer file.Close()
 			Expect(err).NotTo(HaveOccurred())
+			defer file.Close()
 			Expect(size).NotTo(BeZero())
 
 			err = cachedDownloader.SaveState(logger)
@@ -1306,8 +1306,8 @@ var _ = Describe("File cache", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			file, downloadSize, err := cachedDownloader.Fetch(logger, url, cacheKey, checksum, cancelChan)
-			defer file.Close()
 			Expect(err).NotTo(HaveOccurred())
+			defer file.Close()
 
 			Expect(downloadSize).To(BeEquivalentTo(0))
 		})
