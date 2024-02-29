@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	Url "net/url"
 	"os"
@@ -55,7 +54,7 @@ var _ = Describe("File cache", func() {
 	BeforeEach(func() {
 		logger = lagertest.NewTestLogger("test")
 		var err error
-		cachedPath, err = ioutil.TempDir("", "test_file_cached")
+		cachedPath, err = os.MkdirTemp("", "test_file_cached")
 		Expect(err).NotTo(HaveOccurred())
 
 		uncachedPath = filepath.Join(cachedPath, "temp")
@@ -97,7 +96,7 @@ var _ = Describe("File cache", func() {
 	Describe("when the cache folder has stuff in it", func() {
 		It("should not nuke that stuff", func() {
 			filename := filepath.Join(cachedPath, "last_nights_dinner")
-			ioutil.WriteFile(filename, []byte("leftovers"), 0666)
+			os.WriteFile(filename, []byte("leftovers"), 0666)
 			cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
 			_, err := os.Stat(filename)
 			Expect(err).NotTo(HaveOccurred())
@@ -126,13 +125,13 @@ var _ = Describe("File cache", func() {
 			It("should return a readCloser that streams the file", func() {
 				Expect(file).NotTo(BeNil())
 				Expect(fileSize).To(BeNumerically("==", 3))
-				Expect(ioutil.ReadAll(file)).To(Equal(downloadContent))
+				Expect(io.ReadAll(file)).To(Equal(downloadContent))
 			})
 
 			It("should delete the file when we close the readCloser", func() {
 				err := file.Close()
 				Expect(err).NotTo(HaveOccurred())
-				Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+				Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 				expectCacheToHaveNEntries(cachedPath, 0)
 			})
 		})
@@ -150,7 +149,7 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("should clean up after itself", func() {
-				Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+				Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 				expectCacheToHaveNEntries(cachedPath, 0)
 			})
 		})
@@ -196,7 +195,7 @@ var _ = Describe("File cache", func() {
 				It("should return a readCloser that streams the file", func() {
 					Expect(fetchedFile).NotTo(BeNil())
 					Expect(fetchedFileSize).To(BeNumerically("==", maxSizeInBytes/2))
-					Expect(ioutil.ReadAll(fetchedFile)).To(Equal(downloadContent))
+					Expect(io.ReadAll(fetchedFile)).To(Equal(downloadContent))
 				})
 
 				It("should return a file within the cache", func() {
@@ -204,13 +203,13 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should remove any temporary assets generated along the way", func() {
-					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 
 				Describe("downloading with a transformer", func() {
 					BeforeEach(func() {
 						transformer = func(source string, destination string) (int64, error) {
-							err := ioutil.WriteFile(destination, []byte("hello tmp"), 0644)
+							err := os.WriteFile(destination, []byte("hello tmp"), 0644)
 							Expect(err).NotTo(HaveOccurred())
 
 							return 100, err
@@ -221,13 +220,13 @@ var _ = Describe("File cache", func() {
 					It("passes the download through the transformer", func() {
 						Expect(fetchErr).NotTo(HaveOccurred())
 
-						content, err := ioutil.ReadAll(fetchedFile)
+						content, err := io.ReadAll(fetchedFile)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(string(content)).To(Equal("hello tmp"))
 					})
 
 					It("should remove any temporary assets generated along the way", func() {
-						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+						Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 					})
 				})
 			})
@@ -250,13 +249,13 @@ var _ = Describe("File cache", func() {
 
 				It("should return a readCloser that streams the file", func() {
 					Expect(fetchedFile).NotTo(BeNil())
-					Expect(ioutil.ReadAll(fetchedFile)).To(Equal(downloadContent))
+					Expect(io.ReadAll(fetchedFile)).To(Equal(downloadContent))
 				})
 
 				It("should not store the file", func() {
 					fetchedFile.Close()
 					expectCacheToHaveNEntries(cachedPath, 0)
-					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 			})
 
@@ -272,7 +271,7 @@ var _ = Describe("File cache", func() {
 
 				It("should clean up after itself", func() {
 					expectCacheToHaveNEntries(cachedPath, 0)
-					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 			})
 		})
@@ -325,13 +324,13 @@ var _ = Describe("File cache", func() {
 						defer f.Close()
 
 						paths, _ := filepath.Glob(cacheFilePath + "*")
-						Expect(ioutil.ReadFile(paths[0])).To(Equal([]byte(downloadContent)))
+						Expect(os.ReadFile(paths[0])).To(Equal([]byte(downloadContent)))
 					})
 
 					It("should return a readcloser pointing to the file", func() {
 						file, fileSize, err := cachedDownloader.Fetch(logger, url, cacheKey, checksum, cancelChan)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(ioutil.ReadAll(file)).To(Equal([]byte(downloadContent)))
+						Expect(io.ReadAll(file)).To(Equal([]byte(downloadContent)))
 						Expect(fileSize).To(BeNumerically("==", len(downloadContent)))
 					})
 
@@ -340,7 +339,7 @@ var _ = Describe("File cache", func() {
 						f.Close()
 						Expect(err).NotTo(HaveOccurred())
 						expectCacheToHaveNEntries(cachedPath, 1)
-						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+						Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 						Expect(s).To(BeNumerically("==", len(downloadContent)))
 					})
 				})
@@ -354,7 +353,7 @@ var _ = Describe("File cache", func() {
 					It("should return a readcloser pointing to the file", func() {
 						file, fileSize, err := cachedDownloader.Fetch(logger, url, cacheKey, checksum, cancelChan)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(ioutil.ReadAll(file)).To(Equal([]byte(downloadContent)))
+						Expect(io.ReadAll(file)).To(Equal([]byte(downloadContent)))
 						Expect(fileSize).To(BeNumerically("==", len(downloadContent)))
 					})
 
@@ -363,7 +362,7 @@ var _ = Describe("File cache", func() {
 						f.Close()
 						Expect(err).NotTo(HaveOccurred())
 						expectCacheToHaveNEntries(cachedPath, 0)
-						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+						Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 						Expect(s).To(BeNumerically("==", len(downloadContent)))
 					})
 				})
@@ -379,14 +378,14 @@ var _ = Describe("File cache", func() {
 						defer f.Close()
 
 						paths, _ := filepath.Glob(cacheFilePath + "*")
-						Expect(ioutil.ReadFile(paths[0])).To(Equal(fileContent))
+						Expect(os.ReadFile(paths[0])).To(Equal(fileContent))
 						Expect(s).To(BeZero())
 					})
 
 					It("should return a readcloser pointing to the file", func() {
 						file, _, err := cachedDownloader.Fetch(logger, url, cacheKey, checksum, cancelChan)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(ioutil.ReadAll(file)).To(Equal(fileContent))
+						Expect(io.ReadAll(file)).To(Equal(fileContent))
 					})
 				})
 			})
@@ -414,7 +413,7 @@ var _ = Describe("File cache", func() {
 
 			It("should return a readCloser that streams the file", func() {
 				Expect(file).NotTo(BeNil())
-				Expect(ioutil.ReadAll(file)).To(Equal(downloadContent))
+				Expect(io.ReadAll(file)).To(Equal(downloadContent))
 				Expect(fileSize).To(BeNumerically("==", maxSizeInBytes*3))
 			})
 
@@ -426,7 +425,7 @@ var _ = Describe("File cache", func() {
 				Expect(fetchErr).NotTo(HaveOccurred())
 
 				expectCacheToHaveNEntries(cachedPath, 1)
-				Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+				Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 			})
 
 			Context("when the file is downloaded the second time", func() {
@@ -451,7 +450,7 @@ var _ = Describe("File cache", func() {
 
 				It("should return a readCloser that streams the file", func() {
 					Expect(file).NotTo(BeNil())
-					Expect(ioutil.ReadAll(file)).To(Equal(downloadContent))
+					Expect(io.ReadAll(file)).To(Equal(downloadContent))
 				})
 			})
 		})
@@ -470,7 +469,7 @@ var _ = Describe("File cache", func() {
 
 				cachedFile, _, err := cachedDownloader.Fetch(logger, url, name, checksum, cancelChan)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(ioutil.ReadAll(cachedFile)).To(Equal(downloadContent))
+				Expect(io.ReadAll(cachedFile)).To(Equal(downloadContent))
 				if closeAfterDownload {
 					cachedFile.Close()
 				} else {
@@ -729,7 +728,7 @@ var _ = Describe("File cache", func() {
 				})
 
 				It("should remove any temporary assets generated along the way", func() {
-					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 			})
 
@@ -762,7 +761,7 @@ var _ = Describe("File cache", func() {
 
 				It("should clean up after itself", func() {
 					expectCacheToHaveNEntries(cachedPath, 0)
-					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 			})
 		})
@@ -831,7 +830,7 @@ var _ = Describe("File cache", func() {
 					err = cachedDownloader.CloseDirectory(logger, cacheKey, dir)
 					Expect(err).ToNot(HaveOccurred())
 					expectCacheToHaveNEntries(cachedPath, 1)
-					Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+					Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 				})
 			})
 
@@ -1020,7 +1019,7 @@ var _ = Describe("File cache", func() {
 				fetchedFile, _, fetchErr = cachedDownloader.Fetch(logger, url, cacheKey, checksum, cancelChan)
 				Expect(fetchErr).NotTo(HaveOccurred())
 				Expect(fetchedFile).NotTo(BeNil())
-				Expect(ioutil.ReadAll(fetchedFile)).To(Equal(downloadContent))
+				Expect(io.ReadAll(fetchedFile)).To(Equal(downloadContent))
 				fetchedFile.Close()
 			})
 
@@ -1053,7 +1052,7 @@ var _ = Describe("File cache", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(fileInfo.IsDir()).To(BeTrue())
 						expectCacheToHaveNEntries(cachedPath, 1)
-						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+						Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 					})
 				})
 
@@ -1079,7 +1078,7 @@ var _ = Describe("File cache", func() {
 
 						cachedFile, _, err := cachedDownloader.Fetch(logger, urlFiller, "filler", checksum, cancelChan)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(ioutil.ReadAll(cachedFile)).To(Equal(fillerContent))
+						Expect(io.ReadAll(cachedFile)).To(Equal(fillerContent))
 						cachedFile.Close()
 
 						downloadContent = createTarBuffer("test content", 10).Bytes()
@@ -1092,7 +1091,7 @@ var _ = Describe("File cache", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(fileInfo.IsDir()).To(BeTrue())
 						expectCacheToHaveNEntries(cachedPath, 2)
-						Expect(ioutil.ReadDir(uncachedPath)).To(HaveLen(0))
+						Expect(os.ReadDir(uncachedPath)).To(HaveLen(0))
 					})
 				})
 			})
@@ -1154,7 +1153,7 @@ var _ = Describe("File cache", func() {
 				It("should not error", func() {
 					Expect(fetchErr).NotTo(HaveOccurred())
 					Expect(fetchedFile).NotTo(BeNil())
-					Expect(ioutil.ReadAll(fetchedFile)).To(Equal(downloadContent))
+					Expect(io.ReadAll(fetchedFile)).To(Equal(downloadContent))
 					fetchedFile.Close()
 				})
 			})
@@ -1206,7 +1205,7 @@ var _ = Describe("File cache", func() {
 		Context("when the state file is corrupted", func() {
 			BeforeEach(func() {
 				saveStateFile := filepath.Join(cachedPath, "saved_cache.json")
-				err := ioutil.WriteFile(saveStateFile, []byte("{\"foo\""), 0755)
+				err := os.WriteFile(saveStateFile, []byte("{\"foo\""), 0755)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -1226,13 +1225,13 @@ var _ = Describe("File cache", func() {
 
 			BeforeEach(func() {
 				extraFile = filepath.Join(cachedPath, "dummy_file")
-				err := ioutil.WriteFile(extraFile, []byte("foo"), 0755)
+				err := os.WriteFile(extraFile, []byte("foo"), 0755)
 				Expect(err).NotTo(HaveOccurred())
 
 				extraDir = filepath.Join(cachedPath, "dummy_dir/nested_dummy_dir")
 				err = os.MkdirAll(extraDir, 0755)
 				Expect(err).NotTo(HaveOccurred())
-				err = ioutil.WriteFile(filepath.Join(extraDir, "file"), []byte("foo"), 0755)
+				err = os.WriteFile(filepath.Join(extraDir, "file"), []byte("foo"), 0755)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -1398,7 +1397,7 @@ var _ = Describe("File cache", func() {
 			))
 
 			caCertPool := x509.NewCertPool()
-			goodCACert, err := ioutil.ReadFile("fixtures/goodCA.crt")
+			goodCACert, err := os.ReadFile("fixtures/goodCA.crt")
 			Expect(err).NotTo(HaveOccurred())
 			ok := caCertPool.AppendCertsFromPEM(goodCACert)
 			Expect(ok).To(BeTrue())
@@ -1419,7 +1418,7 @@ var _ = Describe("File cache", func() {
 })
 
 func expectCacheToHaveNEntries(cachePath string, n int) {
-	fis, err := ioutil.ReadDir(cachePath)
+	fis, err := os.ReadDir(cachePath)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred())
 	foundTmp := false
 	for _, fi := range fis {

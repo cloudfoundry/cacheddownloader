@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -126,7 +125,7 @@ func (c *cachedDownloader) SaveState(logger lager.Logger) error {
 		return err
 	}
 
-	return ioutil.WriteFile(c.cacheLocation, json, 0600)
+	return os.WriteFile(c.cacheLocation, json, 0600)
 }
 
 func (c *cachedDownloader) RecoverState(logger lager.Logger) error {
@@ -162,7 +161,7 @@ func (c *cachedDownloader) RecoverState(logger lager.Logger) error {
 		trackedFiles[entry.ExpandedDirectoryPath] = struct{}{}
 	}
 
-	files, err := ioutil.ReadDir(c.cache.CachedPath)
+	files, err := os.ReadDir(c.cache.CachedPath)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -371,7 +370,7 @@ func (c *cachedDownloader) populateCache(
 	cancelChan <-chan struct{},
 ) (download, bool, int64, error) {
 	filename, cachingInfo, err := c.downloader.Download(logger, url, func() (*os.File, error) {
-		return ioutil.TempFile(c.uncachedPath, name+"-")
+		return os.CreateTemp(c.uncachedPath, name+"-")
 	}, cachingInfo, checksum, cancelChan)
 	if err != nil {
 		return download{}, false, 0, err
@@ -387,7 +386,7 @@ func (c *cachedDownloader) populateCache(
 	}
 	defer os.Remove(filename)
 
-	cachedFile, err := ioutil.TempFile(c.uncachedPath, "transformed")
+	cachedFile, err := os.CreateTemp(c.uncachedPath, "transformed")
 	if err != nil {
 		return download{}, false, 0, err
 	}

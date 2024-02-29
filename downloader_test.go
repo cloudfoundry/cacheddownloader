@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -41,7 +40,7 @@ var _ = Describe("Downloader", func() {
 	)
 
 	createDestFile := func() (*os.File, error) {
-		return ioutil.TempFile("", "foo")
+		return os.CreateTemp("", "foo")
 	}
 
 	BeforeEach(func() {
@@ -130,7 +129,7 @@ var _ = Describe("Downloader", func() {
 				})
 
 				It("should use the provided file as the download location", func() {
-					fileContents, _ := ioutil.ReadFile(downloadedFile)
+					fileContents, _ := os.ReadFile(downloadedFile)
 					Expect(fileContents).To(ContainSubstring("Hello, client"))
 				})
 
@@ -348,7 +347,7 @@ var _ = Describe("Downloader", func() {
 
 			It("stops the download", func() {
 				errs := make(chan error)
-				destFile, err := ioutil.TempFile("", "foo")
+				destFile, err := os.CreateTemp("", "foo")
 				Expect(err).NotTo(HaveOccurred())
 
 				createDestFile := func() (*os.File, error) {
@@ -453,7 +452,7 @@ var _ = Describe("Downloader", func() {
 				BeforeEach(func() {
 					testServer.TLS.ClientAuth = tls.NoClientCert
 
-					goodCA, err := ioutil.ReadFile("fixtures/goodCA.crt")
+					goodCA, err := os.ReadFile("fixtures/goodCA.crt")
 					Expect(err).NotTo(HaveOccurred())
 
 					ok := downloaderTLS.RootCAs.AppendCertsFromPEM(goodCA)
@@ -477,7 +476,7 @@ var _ = Describe("Downloader", func() {
 					).Client(tlsconfig.WithAuthorityFromFile("fixtures/badCA.crt"))
 					Expect(err).NotTo(HaveOccurred())
 
-					goodCA, err := ioutil.ReadFile("fixtures/goodCA.crt")
+					goodCA, err := os.ReadFile("fixtures/goodCA.crt")
 					Expect(err).NotTo(HaveOccurred())
 
 					ok := downloaderTLS.RootCAs.AppendCertsFromPEM(goodCA)
@@ -634,7 +633,7 @@ var _ = Describe("Downloader", func() {
 			downloader = cacheddownloader.NewDownloader(1*time.Second, 1, nil)
 
 			var err error
-			tempDir, err = ioutil.TempDir("", "temp-dl-dir")
+			tempDir, err = os.MkdirTemp("", "temp-dl-dir")
 			Expect(err).NotTo(HaveOccurred())
 
 			server = ghttp.NewServer()
@@ -669,7 +668,7 @@ var _ = Describe("Downloader", func() {
 				logger,
 				serverUrl,
 				func() (*os.File, error) {
-					return ioutil.TempFile(tempDir, "the-file")
+					return os.CreateTemp(tempDir, "the-file")
 				},
 				cacheddownloader.CachingInfoType{},
 				cacheddownloader.ChecksumInfoType{},

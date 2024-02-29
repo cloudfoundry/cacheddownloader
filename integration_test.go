@@ -1,7 +1,7 @@
 package cacheddownloader_test
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -35,10 +35,10 @@ var _ = Describe("Integration", func() {
 		logger = lagertest.NewTestLogger("test")
 		var err error
 
-		serverPath, err = ioutil.TempDir("", "cached_downloader_integration_server")
+		serverPath, err = os.MkdirTemp("", "cached_downloader_integration_server")
 		Expect(err).NotTo(HaveOccurred())
 
-		cachedPath, err = ioutil.TempDir("", "cached_downloader_integration_cache")
+		cachedPath, err = os.MkdirTemp("", "cached_downloader_integration_cache")
 		Expect(err).NotTo(HaveOccurred())
 
 		handler := http.FileServer(http.Dir(serverPath))
@@ -66,14 +66,14 @@ var _ = Describe("Integration", func() {
 		Expect(err).NotTo(HaveOccurred())
 		defer reader.Close()
 
-		readData, err := ioutil.ReadAll(reader)
+		readData, err := io.ReadAll(reader)
 		Expect(err).NotTo(HaveOccurred())
 
-		cacheContents, err := ioutil.ReadDir(cachedPath)
+		cacheContents, err := os.ReadDir(cachedPath)
 		Expect(err).NotTo(HaveOccurred())
 		expectCacheToHaveNEntries(cachedPath, 1)
 
-		content, err := ioutil.ReadFile(filepath.Join(cachedPath, cacheContents[0].Name()))
+		content, err := os.ReadFile(filepath.Join(cachedPath, cacheContents[0].Name()))
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(readData).To(Equal(content))
@@ -96,7 +96,7 @@ var _ = Describe("Integration", func() {
 		// Call this so that we have predictable mod times on Windows
 		os.Stat(dirPath)
 
-		cacheContents, err := ioutil.ReadDir(cachedPath)
+		cacheContents, err := os.ReadDir(cachedPath)
 		Expect(err).NotTo(HaveOccurred())
 		expectCacheToHaveNEntries(cachedPath, 1)
 
@@ -112,7 +112,7 @@ var _ = Describe("Integration", func() {
 	Describe("Fetch", func() {
 		It("caches downloads", func() {
 			// touch a file on disk
-			err := ioutil.WriteFile(filepath.Join(serverPath, "file"), []byte("a"), 0666)
+			err := os.WriteFile(filepath.Join(serverPath, "file"), []byte("a"), 0666)
 			Expect(err).NotTo(HaveOccurred())
 
 			// download file once
@@ -129,7 +129,7 @@ var _ = Describe("Integration", func() {
 			time.Sleep(time.Second)
 
 			// touch file again
-			err = ioutil.WriteFile(filepath.Join(serverPath, "file"), []byte("b"), 0666)
+			err = os.WriteFile(filepath.Join(serverPath, "file"), []byte("b"), 0666)
 			Expect(err).NotTo(HaveOccurred())
 
 			// download again and we should get a file containing "b"
@@ -149,13 +149,13 @@ var _ = Describe("Integration", func() {
 
 			// fetch directory once
 			dirPath, modTimeBefore := fetchAsDirectory("tarfile")
-			Expect(ioutil.ReadFile(filepath.Join(dirPath, "testdir/file.txt"))).To(Equal([]byte("original")))
+			Expect(os.ReadFile(filepath.Join(dirPath, "testdir/file.txt"))).To(Equal([]byte("original")))
 
 			time.Sleep(time.Second)
 
 			// download again should be cached
 			dirPath, modTimeAfter := fetchAsDirectory("tarfile")
-			Expect(ioutil.ReadFile(filepath.Join(dirPath, "testdir/file.txt"))).To(Equal([]byte("original")))
+			Expect(os.ReadFile(filepath.Join(dirPath, "testdir/file.txt"))).To(Equal([]byte("original")))
 			Expect(modTimeBefore).To(Equal(modTimeAfter))
 
 			time.Sleep(time.Second)
@@ -169,7 +169,7 @@ var _ = Describe("Integration", func() {
 
 			// download again and we should get an untarred file with modified contents
 			dirPath, _ = fetchAsDirectory("tarfile")
-			Expect(ioutil.ReadFile(filepath.Join(dirPath, "testdir/file.txt"))).To(Equal([]byte("modified")))
+			Expect(os.ReadFile(filepath.Join(dirPath, "testdir/file.txt"))).To(Equal([]byte("modified")))
 		})
 	})
 })
