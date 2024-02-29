@@ -2,7 +2,6 @@ package cacheddownloader_test
 
 import (
 	"archive/tar"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,10 +45,10 @@ var _ = Describe("TarTransformer", func() {
 	BeforeEach(func() {
 		var err error
 
-		scratch, err = ioutil.TempDir("", "tar-transformer-scratch")
+		scratch, err = os.MkdirTemp("", "tar-transformer-scratch")
 		Expect(err).NotTo(HaveOccurred())
 
-		destinationFile, err := ioutil.TempFile("", "destination")
+		destinationFile, err := os.CreateTemp("", "destination")
 		Expect(err).NotTo(HaveOccurred())
 
 		err = destinationFile.Close()
@@ -196,7 +195,7 @@ var _ = Describe("TarTransformer", func() {
 		BeforeEach(func() {
 			sourcePath = filepath.Join(scratch, "bogus")
 
-			err := ioutil.WriteFile(sourcePath, []byte("bogus"), 0755)
+			err := os.WriteFile(sourcePath, []byte("bogus"), 0755)
 			Expect(err).NotTo(HaveOccurred())
 		})
 

@@ -3,7 +3,6 @@ package cacheddownloader_test
 import (
 	"archive/tar"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +25,7 @@ var _ = Describe("FileCache", func() {
 
 	BeforeEach(func() {
 		logger = lagertest.NewTestLogger("test")
-		cacheDir, err = ioutil.TempDir("", "cache-test")
+		cacheDir, err = os.MkdirTemp("", "cache-test")
 		Expect(err).NotTo(HaveOccurred())
 
 		sourceFile = createFile("cache-test-file", "the-file-content")
@@ -70,7 +69,7 @@ var _ = Describe("FileCache", func() {
 			})
 
 			It("returns a reader", func() {
-				content, err := ioutil.ReadAll(readCloser)
+				content, err := io.ReadAll(readCloser)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(content)).To(Equal("the-file-content"))
 				Expect(filenamesInDir(cacheDir)).To(HaveLen(1))
@@ -136,7 +135,7 @@ var _ = Describe("FileCache", func() {
 						})
 
 						It("returns a reader for the new content", func() {
-							content, err := ioutil.ReadAll(newReader)
+							content, err := io.ReadAll(newReader)
 							Expect(err).NotTo(HaveOccurred())
 							Expect(string(content)).To(Equal("new-file-content"))
 						})
@@ -157,7 +156,7 @@ var _ = Describe("FileCache", func() {
 						})
 
 						It("returns a reader for the new content", func() {
-							content, err := ioutil.ReadAll(newReader)
+							content, err := io.ReadAll(newReader)
 							Expect(err).NotTo(HaveOccurred())
 							Expect(string(content)).To(Equal("new-file-content"))
 						})
@@ -169,7 +168,7 @@ var _ = Describe("FileCache", func() {
 						})
 
 						It("still allows the previous reader to read", func() {
-							content, err := ioutil.ReadAll(readCloser)
+							content, err := io.ReadAll(readCloser)
 							Expect(err).NotTo(HaveOccurred())
 							Expect(string(content)).To(Equal("the-file-content"))
 						})
@@ -377,7 +376,7 @@ var _ = Describe("FileCache", func() {
 				Expect(reader).NotTo(BeNil())
 				Expect(ci).To(Equal(cacheInfo))
 
-				content, err := ioutil.ReadAll(reader)
+				content, err := io.ReadAll(reader)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(content)).To(Equal("the-file-content"))
 			})
@@ -404,7 +403,7 @@ var _ = Describe("FileCache", func() {
 					Expect(reader).NotTo(BeNil())
 					Expect(ci).To(Equal(cacheInfo))
 
-					content, err := ioutil.ReadAll(reader)
+					content, err := io.ReadAll(reader)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(content)).To(Equal("new-file-content"))
 				})
@@ -926,7 +925,7 @@ var _ = Describe("FileCache", func() {
 })
 
 func createFile(filename string, content string) *os.File {
-	sourceFile, err := ioutil.TempFile("", filename)
+	sourceFile, err := os.CreateTemp("", filename)
 	Expect(err).NotTo(HaveOccurred())
 	sourceFile.WriteString(content)
 	sourceFile.Close()
@@ -935,7 +934,7 @@ func createFile(filename string, content string) *os.File {
 }
 
 func createArchive(filename, sampleData string) *os.File {
-	sourceFile, err := ioutil.TempFile("", filename)
+	sourceFile, err := os.CreateTemp("", filename)
 
 	Expect(err).NotTo(HaveOccurred())
 
@@ -989,7 +988,7 @@ func createArchive(filename, sampleData string) *os.File {
 }
 
 func filenamesInDir(dir string) []string {
-	entries, err := ioutil.ReadDir(dir)
+	entries, err := os.ReadDir(dir)
 	Expect(err).NotTo(HaveOccurred())
 
 	result := []string{}
