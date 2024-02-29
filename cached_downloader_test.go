@@ -1418,16 +1418,6 @@ var _ = Describe("File cache", func() {
 	})
 })
 
-type constTransformer struct {
-	file string
-	size int64
-	err  error
-}
-
-func (t constTransformer) ConstTransform(path string) (string, int64, error) {
-	return t.file, t.size, t.err
-}
-
 func expectCacheToHaveNEntries(cachePath string, n int) {
 	fis, err := ioutil.ReadDir(cachePath)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred())
