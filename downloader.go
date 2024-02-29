@@ -25,10 +25,6 @@ const (
 	NoBytesReceived       = -1
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 func backoff(minRetry, maxRetry, maxJitter time.Duration, attemptNum int) time.Duration {
 	mult := math.Pow(2, float64(attemptNum)) * float64(minRetry)
 	sleep := time.Duration(mult)
