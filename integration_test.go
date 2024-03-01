@@ -78,7 +78,10 @@ var _ = Describe("Integration", func() {
 
 		Expect(readData).To(Equal(content))
 
-		return content, cacheContents[0].ModTime()
+		fdInfo, err := cacheContents[0].Info()
+		Expect(err).NotTo(HaveOccurred())
+
+		return content, fdInfo.ModTime()
 	}
 
 	fetchAsDirectory := func(fileToFetch string) (string, time.Time) {
@@ -101,12 +104,15 @@ var _ = Describe("Integration", func() {
 		expectCacheToHaveNEntries(cachedPath, 1)
 
 		// ReadDir sorts by file name, so the tarfile should come before the directory
-		Expect(cacheContents[0].Mode().IsDir()).To(BeTrue())
+		fdInfo, err := cacheContents[0].Info()
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(fdInfo.Mode().IsDir()).To(BeTrue())
 
 		dirPathInCache := filepath.Join(cachedPath, cacheContents[0].Name())
 		Expect(dirPath).To(Equal(dirPathInCache))
 
-		return dirPath, cacheContents[0].ModTime()
+		return dirPath, fdInfo.ModTime()
 	}
 
 	Describe("Fetch", func() {
