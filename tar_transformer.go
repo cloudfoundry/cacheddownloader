@@ -70,7 +70,7 @@ func mimeType(fd *os.File) (string, error) {
 }
 
 func transformTarGZToTar(path, destPath string) (int64, error) {
-	dest, err := os.OpenFile(destPath, os.O_WRONLY, 0666)
+	dest, err := os.OpenFile(destPath, os.O_WRONLY, 0644)
 	if err != nil {
 		return 0, err
 	}
@@ -105,7 +105,7 @@ func transformTarGZToTar(path, destPath string) (int64, error) {
 }
 
 func gunzipTarGZToTar(gunzipPath, path, destPath string) (int64, error) {
-	destFile, err := os.OpenFile(destPath, os.O_WRONLY, 0666)
+	destFile, err := os.OpenFile(destPath, os.O_WRONLY, 0644)
 	if err != nil {
 		return 0, err
 	}
@@ -132,7 +132,7 @@ func gunzipTarGZToTar(gunzipPath, path, destPath string) (int64, error) {
 }
 
 func transformZipToTar(path, destPath string) (int64, error) {
-	dest, err := os.OpenFile(destPath, os.O_WRONLY, 0666)
+	dest, err := os.OpenFile(destPath, os.O_WRONLY, 0644)
 	if err != nil {
 		return 0, err
 	}
