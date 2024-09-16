@@ -86,6 +86,7 @@ func transformTarGZToTar(path, destPath string) (int64, error) {
 		return 0, err
 	}
 
+	// #nosec - G110 - We're fine with unbounded file decompression here as we have container filesystem quotas that will prevent this from eating up the entire diego cell disk space
 	n, err := io.Copy(dest, gr)
 	if err != nil {
 		return 0, err
@@ -207,6 +208,7 @@ func writeRegularZipEntryToTar(tarWriter *tar.Writer, zipEntry *zip.File, zipInf
 		return err
 	}
 
+	// #nosec - G110 - We're fine with unbounded file decompression here as we have container filesystem quotas that will prevent this from eating up the entire diego cell disk space
 	_, err = io.Copy(tarWriter, zipReader)
 	if err != nil {
 		return err
