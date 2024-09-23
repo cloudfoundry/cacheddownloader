@@ -98,25 +98,40 @@ func New(
 	downloader *Downloader,
 	cache *FileCache,
 	transformer CacheTransformer,
-) *cachedDownloader {
-	os.MkdirAll(cache.CachedPath, 0750)
+) (*cachedDownloader, error) {
+	err := os.MkdirAll(cache.CachedPath, 0750)
+	if err != nil {
+		return nil, fmt.Errorf("could not create cache path %s: %s", cache.CachedPath, err)
+	}
+
+	uncachedPath, err := createTempCachedDir(cache.CachedPath)
+	if err != nil {
+		return nil, err
+	}
 	return &cachedDownloader{
 		cache:         cache,
 		cacheLocation: filepath.Join(cache.CachedPath, "saved_cache.json"),
-		uncachedPath:  createTempCachedDir(cache.CachedPath),
+		uncachedPath:  uncachedPath,
 		downloader:    downloader,
 		transformer:   transformer,
 
 		lock:       &sync.Mutex{},
 		inProgress: map[string]chan struct{}{},
-	}
+	}, nil
 }
 
-func createTempCachedDir(path string) string {
+func createTempCachedDir(path string) (string, error) {
 	workDir := filepath.Join(path, "temp")
-	os.RemoveAll(workDir)
-	os.MkdirAll(workDir, 0755)
-	return workDir
+	err := os.RemoveAll(workDir)
+	if err != nil {
+		return "", fmt.Errorf("could not remove %s: %s", path, err)
+	}
+
+	err = os.MkdirAll(workDir, 0755)
+	if err != nil {
+		return "", fmt.Errorf("could not create path %s: %s", path, err)
+	}
+	return workDir, nil
 }
 
 func (c *cachedDownloader) SaveState(logger lager.Logger) error {
