@@ -70,7 +70,8 @@ var _ = Describe("File cache", func() {
 
 		cache = cacheddownloader.NewCache(cachedPath, maxSizeInBytes)
 		downloader = cacheddownloader.NewDownloader(1*time.Second, MAX_CONCURRENT_DOWNLOADS, nil)
-		cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+		cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+		Expect(err).NotTo(HaveOccurred())
 		server = ghttp.NewServer()
 
 		url, err = Url.Parse(server.URL() + "/my_file")
@@ -87,7 +88,8 @@ var _ = Describe("File cache", func() {
 	Describe("when the cache folder does not exist", func() {
 		It("should create it", func() {
 			os.RemoveAll(cachedPath)
-			cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+			cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+			Expect(err).ToNot(HaveOccurred())
 			_, err := os.Stat(cachedPath)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -97,7 +99,8 @@ var _ = Describe("File cache", func() {
 		It("should not nuke that stuff", func() {
 			filename := filepath.Join(cachedPath, "last_nights_dinner")
 			os.WriteFile(filename, []byte("leftovers"), 0666)
-			cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+			cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+			Expect(err).ToNot(HaveOccurred())
 			_, err := os.Stat(filename)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -214,7 +217,8 @@ var _ = Describe("File cache", func() {
 
 							return 100, err
 						}
-						cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+						cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+						Expect(err).ToNot(HaveOccurred())
 					})
 
 					It("passes the download through the transformer", func() {
@@ -1014,7 +1018,8 @@ var _ = Describe("File cache", func() {
 				))
 
 				cache = cacheddownloader.NewCache(cachedPath, maxSizeInBytes)
-				cachedDownloader = cacheddownloader.New(downloader, cache, cacheddownloader.TarTransform)
+				cachedDownloader, err = cacheddownloader.New(downloader, cache, cacheddownloader.TarTransform)
+				Expect(err).ToNot(HaveOccurred())
 
 				fetchedFile, _, fetchErr = cachedDownloader.Fetch(logger, url, cacheKey, checksum, cancelChan)
 				Expect(fetchErr).NotTo(HaveOccurred())
@@ -1131,7 +1136,8 @@ var _ = Describe("File cache", func() {
 
 			Context("then is fetched with Fetch", func() {
 				BeforeEach(func() {
-					cachedDownloader = cacheddownloader.New(downloader, cache, cacheddownloader.TarTransform)
+					cachedDownloader, err = cacheddownloader.New(downloader, cache, cacheddownloader.TarTransform)
+					Expect(err).ToNot(HaveOccurred())
 				})
 
 				JustBeforeEach(func() {
@@ -1195,7 +1201,8 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("does not return an error", func() {
-				cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+				cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+				Expect(err).ToNot(HaveOccurred())
 
 				err := cachedDownloader.RecoverState(logger)
 				Expect(err).NotTo(HaveOccurred())
@@ -1210,7 +1217,8 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("does not return an error", func() {
-				cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+				cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+				Expect(err).ToNot(HaveOccurred())
 
 				err := cachedDownloader.RecoverState(logger)
 				Expect(err).NotTo(HaveOccurred())
@@ -1236,13 +1244,15 @@ var _ = Describe("File cache", func() {
 			})
 
 			It("should remove regular files", func() {
-				cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+				cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+				Expect(err).ToNot(HaveOccurred())
 				Expect(cachedDownloader.RecoverState(logger)).To(Succeed())
 				Expect(extraFile).NotTo(BeAnExistingFile())
 			})
 
 			It("should remove directories", func() {
-				cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+				cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+				Expect(err).ToNot(HaveOccurred())
 				Expect(cachedDownloader.RecoverState(logger)).To(Succeed())
 				Expect(extraDir).NotTo(BeADirectory())
 			})
@@ -1286,7 +1296,8 @@ var _ = Describe("File cache", func() {
 			It("should evict old entries from the cache", func() {
 				expectCacheToHaveNEntries(cachedPath, 3)
 
-				cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+				cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+				Expect(err).ToNot(HaveOccurred())
 				Expect(cachedDownloader.RecoverState(logger)).To(Succeed())
 
 				expectCacheToHaveNEntries(cachedPath, 1)
@@ -1299,7 +1310,8 @@ var _ = Describe("File cache", func() {
 				ghttp.RespondWith(http.StatusNotModified, nil),
 			))
 
-			cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+			cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+			Expect(err).ToNot(HaveOccurred())
 
 			err := cachedDownloader.RecoverState(logger)
 			Expect(err).NotTo(HaveOccurred())
@@ -1337,7 +1349,8 @@ var _ = Describe("File cache", func() {
 			Context("and cacheddownloader restarted", func() {
 				JustBeforeEach(func() {
 					Expect(cachedDownloader.SaveState(logger)).To(Succeed())
-					cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+					cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+					Expect(err).ToNot(HaveOccurred())
 					Expect(cachedDownloader.RecoverState(logger)).To(Succeed())
 				})
 
@@ -1410,7 +1423,8 @@ var _ = Describe("File cache", func() {
 			}
 
 			downloader = cacheddownloader.NewDownloader(time.Second, MAX_CONCURRENT_DOWNLOADS, tlsConfig)
-			cachedDownloader = cacheddownloader.New(downloader, cache, transformer)
+			cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+			Expect(err).ToNot(HaveOccurred())
 			_, _, err = cachedDownloader.Fetch(logger, url, "", checksum, cancelChan)
 			Expect(err).NotTo(HaveOccurred())
 		})
