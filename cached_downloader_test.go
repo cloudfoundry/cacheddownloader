@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	Url "net/url"
 	"os"
@@ -92,6 +93,25 @@ var _ = Describe("File cache", func() {
 			Expect(err).ToNot(HaveOccurred())
 			_, err := os.Stat(cachedPath)
 			Expect(err).NotTo(HaveOccurred())
+		})
+
+		Context("when the cachedPath is not a valid path", func() {
+			It("should error", func() {
+				// create a file
+				file := filepath.Join("/tmp", "meow")
+				if err := os.WriteFile(file, []byte("meow"), 0666); err != nil {
+					log.Fatal(err)
+				}
+				defer os.Remove(file)
+
+				// create a cached path where the file created above is a dir
+				cachedPath = "/tmp/meow/meow"
+				cache.CachedPath = cachedPath
+
+				cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(ContainSubstring("could not create cache path")))
+			})
 		})
 	})
 
