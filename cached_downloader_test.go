@@ -86,6 +86,17 @@ var _ = Describe("File cache", func() {
 		os.RemoveAll(uncachedPath)
 	})
 
+	Describe("When a new CachedDownloader fails to create a temp directory for the cache", func() {
+		It("returns an error", func() {
+			cachedPath = ""
+			cache = cacheddownloader.NewCache(cachedPath, maxSizeInBytes)
+			downloader = cacheddownloader.NewDownloader(1*time.Second, MAX_CONCURRENT_DOWNLOADS, nil)
+			cachedDownloader, err = cacheddownloader.New(downloader, cache, transformer)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("could not create cache path"))
+		})
+	})
+
 	Describe("when the cache folder does not exist", func() {
 		It("should create it", func() {
 			os.RemoveAll(cachedPath)
